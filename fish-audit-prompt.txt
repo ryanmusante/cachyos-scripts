@@ -1,38 +1,18 @@
 FISH SHELL SCRIPT AUDIT PROMPT
 ===============================
-Version: 5.0.1
-Derived from: ry-install.fish v2.8.0 audit (2026-02-26)
-Changed: 3.3.0 --watch, --diff <path>, --no-log, install_files wrapper,
-               _backup_system_destinations, structural consistency pass
-         4.0.0 Merge comprehensive audit mandate: zero-skip enforcement,
-               external command audit, rollback tracing, concurrency
-               hardening, config syntax reference table, severity
-               taxonomy (CRITICAL/HIGH/MED/LOW/INFO), dual output
-               format (per-finding table + phase summary), tokei for
-               line-count verification, all-line all-path coverage rule
-         5.0.0 Lessons from v2.7.4→v2.8.0 audit cycle:
-               - Fish redirect regression lesson: string trim < missing
-                 file leaks warnings; correct pattern is command sub
-               - Pre-lock argument validation pattern (exit 2 before lock)
-               - flock exec failure detection and mkdir fallback path
-               - Dispatch argument quoting (quoted $TARGET in switch)
-               - Named constant completeness (ROOT_AVAIL_CRIT/WARN)
-               - Dependency list accuracy (no unused deps in check_deps)
-               - --watch --once: non-interactive single snapshot mode
-                 with tty gate relaxation and WATCH_ONCE lifecycle
-               - README sample output sections for complex modes
-               New checks: 324 (was 312). 12 added across P7-P13.
-         5.0.1 Fix check 130: add missing REMOVE_EXISTING and
-               DEFAULT_ENTRY to sdboot-manage required keys list
-               (both verified in validate_configs and verify_static)
-Checks: 324
+Version: 6.0.0
+Derived from: ry-install.fish v2.8.3 audit (2026-02-26)
+Changed: 6.0.0 Sync with ry-install v2.8.1→v2.8.3:
+               flock/exec fd REMOVED (mkdir-only lock); --profile flag;
+               NVME_LIFE_WARN constant; ANSI clear-screen NO_COLOR guard;
+               checks 218/324 → regression guards. 325 checks (was 324).
+         (Full history: 3.3.0→5.0.1 in git)
+Checks: 325
 Phases: 13 (11 static + 1 runtime + 1 gap analysis)
-
-
 PURPOSE
 -------
 Comprehensive audit checklist for production fish shell scripts.
-324 checks across 13 phases covering embedded content, style,
+325 checks across 13 phases covering embedded content, style,
 architecture, runtime execution, and gap analysis. Designed for
 scripts that manage system configuration, use sudo, handle
 credentials, generate config files, and run multi-mode dispatch
@@ -45,122 +25,34 @@ Trace all code paths including error branches, edge cases,
 unreachable code, early returns, fall-throughs, and implicit
 control flow.
 
-CRITICAL LESSON (v3.0.0): Static analysis alone is insufficient.
-Previous versions relied entirely on rg/grep/awk pattern matching.
-This missed a real bug (root-detection warning polluting stderr for
---help/--version) that was only found by actually running the script
-in fish and checking stdout/stderr separation. Phases 12 and 13
-close this gap.
-
-STRUCTURAL FIX (v3.1.0): Anti-stall, parallel processing, and
-partial-completion rules reinforced throughout ALL passes and phase
-boundaries. Pass 7 (Finalize) fully implemented. Environment setup
-consolidated. Context decay over long checklists mitigated with
-boundary reminders.
-
-SCOPE EXPANSION (v3.2.0): Updated for scripts with split destination
-arrays (SYSTEM/USER/SERVICE), backup subsystems, log viewer mode,
-single-file install mode, --verify-static/--verify-runtime/--test-all
-modes, --json modifier, and threshold constant globals. Runtime test
-matrix expanded to cover all new modes.
-
-MODE EXPANSION (v3.3.0): Added --watch live dashboard with tty gating
-and terminal resize handling, --diff <path> single-file mode with
-absolute path validation, --no-log flag for log suppression,
-install_files wrapper with argparse temp file lifecycle, and
-_backup_system_destinations pre-mutation backup.
-
-AUDIT HARDENING (v4.0.0): Merged comprehensive audit mandate.
-External command audit (existence, error handling, version
-assumptions, PATH safety). Rollback tracing on all destructive ops.
-Concurrency analysis beyond TOCTOU. Config syntax reference table
-consolidated. Severity taxonomy expanded to 5 levels. Dual output
-format: per-finding table (one row per issue) plus phase summary
-matrix. tokei for authoritative line counts. All code blocks verified
-for fish syntax, parallel subshell usage, and rust tool preference.
-
-REGRESSION & HARDENING (v5.0.0): Lessons from v2.7.4→v2.8.0 audit
-cycle incorporated. Key additions:
-
-  FISH REDIRECT REGRESSION (v2.7.4): Replacing `cat "$f" | string
-  trim` with `string trim < "$f" 2>/dev/null` was correct for pipe
-  elimination but BROKE error suppression. Fish evaluates redirects
-  before the command runs, so `< /nonexistent 2>/dev/null` emits a
-  fish-level "Path does not exist" warning to stderr that 2>/dev/null
-  CANNOT suppress (it only suppresses string trim's stderr). Correct
-  fix: `string trim -- (cat -- "$f" 2>/dev/null)` — command sub lets
-  cat's 2>/dev/null properly suppress the missing-file error. This
-  class of bug is INVISIBLE to static analysis; requires runtime test
-  with missing file paths and stderr byte counting. New anti-pattern
-  check added to Phase 9.
-
-  PRE-LOCK VALIDATION (v2.8.0): Arguments that determine exit 2
-  (usage error) must be validated BEFORE lock acquisition. Otherwise
-  a usage error may be masked by or confused with a lock failure
-  (exit 1). Pattern: validate → lock → execute. New check in Phase 8.
-
-  FLOCK EXEC GUARD (v2.8.0): `exec 9>"$file"` can fail silently in
-  restricted environments (containers, sandboxes, SELinux). Must test
-  exec success and fall through to mkdir-based lock on failure, not
-  emit false "another instance running" error. New check in Phase 8.
-
-  DISPATCH QUOTING (v2.8.0): Variable arguments in mode dispatch
-  (`do_func $TARGET`) must be quoted (`do_func "$TARGET"`) to prevent
-  word splitting on paths with spaces. New check in Phase 8.
-
-  NAMED CONSTANT COMPLETENESS (v2.8.0): Hardcoded numeric thresholds
-  (e.g., `test "$avail" -lt 2`) must be replaced with named constants
-  (e.g., `$ROOT_AVAIL_CRIT`). New check in Phase 10.
-
-  DEPENDENCY ACCURACY (v2.8.0): check_deps must list only commands
-  actually used. Removed dependencies (e.g., curl after WiFi moved
-  to nmcli) must be pruned. New check in Phase 11.
-
-  --WATCH --ONCE (v2.8.0): Non-interactive single-snapshot mode.
-  WATCH_ONCE lifecycle: init false → parse --once → validate (requires
-  --watch) → break after first render → tty gate relaxed when --once.
-  New runtime checks in Phase 12.
-
-
+KEY LESSONS (encoded as checks — see phases for details):
+  - Static analysis alone misses execution-order bugs → Phase 12
+  - Fish redirects resolve BEFORE command runs → check 242, Phase 9
+  - Pre-lock arg validation: validate → lock → execute → check 230
+  - flock/exec fd REMOVED v2.8.2; mkdir-only lock → checks 218, 324
+  - Dispatch args must be quoted → check 231
+  - Named constants for all thresholds → checks 247-258
+  - check_deps must match actual usage → check 272
+  - --watch --once tty gate relaxation → checks 314-316
+  - --profile [PROFILE] stderr, NO_COLOR respect → check 325
+  - ANSI clear-screen guard in do_watch → check 304
 USAGE
 -----
 Provide this prompt along with the script to audit. Work through all
 phases without stopping. Record PASS/FAIL/INFO per check. After the
 audit, produce a spec file for all fixes.
-
-
 ───────────────────────────────────────────────────────────────
  ENVIRONMENT SETUP (run before any audit work)
 ───────────────────────────────────────────────────────────────
 
-STEP 0: DOWNLOAD SCRIPT TO CONTAINER
+STEP 0: COPY SCRIPT TO CONTAINER
 
-     The script MUST be in the container filesystem for tool access.
-     If provided as an upload, it's at /mnt/user-data/uploads/.
-     If provided as a URL:
-
-     ```bash
-     # GitHub repo
-     git clone <repo-url> /home/claude/audit-src
-     # Or direct file
-     curl -fsSL <url> -o /home/claude/audit-src/script.fish
-     ```
-
-     Copy to working directory:
      ```bash
      mkdir -p /home/claude/audit-src
      cp /mnt/user-data/uploads/<file> /home/claude/audit-src/
-     ```
-
-     Verify the file is readable and count lines:
-     ```bash
      wc -l /home/claude/audit-src/script.fish
-     head -5 /home/claude/audit-src/script.fish
-     # If tokei available, use for authoritative breakdown:
      command -v tokei >/dev/null 2>&1 && tokei /home/claude/audit-src/script.fish
      ```
-
-
 STEP 1: INSTALL ALL TOOLS (single command)
 
      Fish is the authoritative interpreter. Rust CLI tools replace
@@ -190,31 +82,19 @@ STEP 1: INSTALL ALL TOOLS (single command)
      blocks work unchanged. Run this block ONCE before any audit work:
 
      ```bash
-     # TOOL FALLBACK — define only for missing tools
+     # TOOL FALLBACK — define wrappers for missing tools
      command -v rg  >/dev/null 2>&1 || rg()  { grep -P --color=never "$@"; }
      command -v bat >/dev/null 2>&1 || bat() {
        local args=() range=""
        while [[ $# -gt 0 ]]; do
-         case "$1" in
-           --plain) shift ;;
-           -r) shift; range="$1"; shift ;;
-           *) args+=("$1"); shift ;;
-         esac
+         case "$1" in --plain) shift ;; -r) shift; range="$1"; shift ;; *) args+=("$1"); shift ;; esac
        done
-       if [[ -n "$range" ]]; then
-         sed -n "${range%%:*},${range##*:}p" "${args[-1]}"
-       else
-         cat "${args[@]}"
-       fi
+       if [[ -n "$range" ]]; then sed -n "${range%%:*},${range##*:}p" "${args[-1]}"; else cat "${args[@]}"; fi
      }
      command -v eza >/dev/null 2>&1 || eza() { ls "$@"; }
-     command -v fd  >/dev/null 2>&1 || fd()  {
-       local pat="$1"; shift
-       find "$@" -name "$pat" 2>/dev/null
-     }
+     command -v fd  >/dev/null 2>&1 || fd()  { local pat="$1"; shift; find "$@" -name "$pat" 2>/dev/null; }
      command -v sd  >/dev/null 2>&1 || sd()  { sed -i "s/$1/$2/g" "${@:3}"; }
      export -f rg bat eza fd sd 2>/dev/null; true
-     echo "Fallback wrappers: active for any missing rust tools"
      ```
 
      FISH USAGE:
@@ -236,117 +116,30 @@ STEP 1: INSTALL ALL TOOLS (single command)
        Read input:           read -P "prompt: " var (NOT read -p)
        Read silent:          read -sP "prompt: " var (hidden input)
 
-     CRITICAL FISH REDIRECT BEHAVIOR (for the auditor):
-       Fish evaluates redirects BEFORE running the command. This means:
-         string trim < /nonexistent 2>/dev/null
-       Fish opens /nonexistent for stdin, FAILS at the shell level, and
-       emits "warning: Path '/nonexistent' does not exist" to stderr.
-       The 2>/dev/null only suppresses string trim's stderr, NOT fish's
-       own redirect-resolution warnings. This is DIFFERENT from bash.
-
-       CORRECT patterns for reading files that may not exist:
-         string trim -- (cat -- "$f" 2>/dev/null)    # command sub
-         test -f "$f"; and string trim < "$f"         # guard first
-       WRONG pattern (leaks fish warnings to stderr):
-         string trim < "$f" 2>/dev/null               # BROKEN
-
-     TOOL MAPPING — prefer rust tools; fallback wrappers cover all cases:
-       grep  → rg (ripgrep)    rg 'pattern' file       fallback: grep -P
-       find  → fd              fd 'pattern' /path       fallback: find -name
-       cat   → bat             bat --plain file         fallback: cat
-       sed   → sd              sd 'find' 'replace'      fallback: sed
-       ls    → eza             eza -la                  fallback: ls -la
-
-     Why rust tools:
-       rg: respects .gitignore, faster, better Unicode, PCRE2 support
-       fd: simpler syntax, respects .gitignore, parallel execution
-       bat: line numbers by default, syntax highlighting, git integration
-       sd: regex by default, no escaping hell, predictable behavior
-
-     NOTE: All code blocks use rg/bat/eza/fd directly. The fallback
-     wrappers from STEP 1 route these to grep/cat/ls/find automatically
-     when rust tools are absent. No code changes needed in any pass.
+     FISH REDIRECT BUG: see check 242. Fish resolves redirects before
+       command runs; `< nonexistent 2>/dev/null` leaks warnings.
 
      For large files (>500 lines), use rg with targeted patterns.
-     NEVER read entire files sequentially. Max 3 reads per file.
-     Example workflow:
-       rg -n 'set --erase' script.fish          # find all instances
-       bat --plain -r 295:300 script.fish        # view context
-       rg -c 'pattern' script.fish               # count matches
-
-
-───────────────────────────────────────────────────────────────
- CONFIG SYNTAX REFERENCE (quick-lookup during Phase 6)
-───────────────────────────────────────────────────────────────
-
-  Format                  Rule
-  ──────────────────────  ──────────────────────────────────────
-  loader.conf             key<space>value (default, timeout,
-                          console-mode, editor) — NO = sign
-  kernel cmdline          space-separated params, rw root=UUID=
-  sdboot-manage           KEY="VALUE" (shell-style quoting)
-  mkinitcpio              MODULES=() HOOKS=() COMPRESSION=""
-  modprobe.d              blacklist <module> (blacklist-only)
-  modules-load.d          one module per line, no options
-  udev rules              == for match, = for assign
-                          ACTION==, SUBSYSTEM==, KERNEL==,
-                          DRIVERS==, ATTR{}, MODE=
-  systemd units           [Unit] [Service] [Install] sections
-                          ExecStart= uses absolute paths
-  systemd drop-ins        [Manager]:Default* (override format)
-  resolved.conf.d         [Resolve] (NOT [Resolved])
-  logind.conf.d           [Login] section header
-  iwd                     [General] [DriverQuirks] [Network]
-  NetworkManager          [device] [connection] [logging]
-                          wifi.powersave: 0=default 1=ignore
-                          2=disable 3=enable
-  environment.d           KEY=VALUE (no export, no quotes)
-  wireless-regdom         WIRELESS_REGDOM="XX" (two-letter)
-
-
-───────────────────────────────────────────────────────────────
- CROSS-REFERENCE PAIRS (verify synchronized in Phase 7)
-───────────────────────────────────────────────────────────────
-
-  DESTINATIONS        ↔  get_file_content case branches
-  KERNEL_PARAMS       ↔  LINUX_OPTIONS in sdboot-manage
-  MASK                ↔  README documentation
-  VERSION             ↔  header_comment in script
-  ENV_VARS            ↔  /etc/environment content
-  MKINITCPIO_HOOKS    ↔  mkinitcpio.conf HOOKS=()
-
+     Max 3 reads per file per pass.
+CONFIG SYNTAX: see userPreferences [AUDIT] section
+CROSS-REFERENCE PAIRS: see userPreferences [AUDIT] cross_refs
 
 ───────────────────────────────────────────────────────────────
  EXECUTION STRATEGY
 ───────────────────────────────────────────────────────────────
 
-ANTI-STALL RULES (apply to EVERY pass):
-  - CRITICAL: Do not stall. Do not ask permission between phases.
-  - Work continuously through all phases.
-  - >60 lines of output → write to file FIRST, then analyze
-  - >3 tool calls with no findings written → write interim results
-  - If blocked on one check → skip, mark DEFERRED, continue
-  - Never ask "should I continue?" — always continue
-  - Save progress after EVERY pass to the output file
-  - Progress format: "PASS N: M/N checks complete, F findings"
-
-CHUNKING RULES:
-  1. Download the script to the container first.
-  2. Run passes in order. Each pass = one chunk of work.
-  3. Batch tool calls — combine related checks into single
-     compound bash commands.
-  4. Parallel when independent — gather data for multiple
-     phases in a single command using background subshells (&).
-  5. Write findings to file AS DISCOVERED:
-     echo "F-N ..." >> /home/claude/audit-findings.txt
-  6. If a phase has >10 items, split into sub-chunks of 5.
-  7. Max 3 retries per tool call. If stuck, log what failed
-     and continue to next phase.
-  8. Never re-read the same file region twice. Cache line
-     ranges in variables or temp files.
-  9. Save progress after EVERY pass to the output file.
-
-
+EXECUTION RULES (apply to ALL passes):
+  - Work continuously. Never ask "should I continue?" — always continue.
+  - Batch tool calls. Parallel (&) when independent.
+  - >60 lines output → write to file first, then analyze.
+  - >3 tool calls with no findings written → flush to file now.
+  - If blocked on one check → skip, mark DEFERRED, continue.
+  - Save progress after EVERY pass to audit-findings.txt.
+  - Max 3 retries per tool call. If stuck → log failure, continue.
+  - Never re-read the same file region twice per pass.
+  - >10 items in a phase → split into sub-chunks of 5.
+  - Write findings as discovered:
+    echo "F-N ..." >> /home/claude/audit-findings.txt
 EXECUTION ORDER (7 passes):
 
   PASS 1 — DATA GATHERING   phases 1-5   (single compound command)
@@ -356,8 +149,6 @@ EXECUTION ORDER (7 passes):
   PASS 5 — RUNTIME          phase 12     (fish execution tests)
   PASS 6 — GAP ANALYSIS     phase 13     (race conditions, error paths, edges)
   PASS 7 — FINALIZE         —            (summary table + spec file + zip)
-
-
 PASS 1: PARALLEL DATA GATHERING (phases 1-5)
 
   Run ONE compound command. All 5 extractions in parallel subshells.
@@ -422,12 +213,7 @@ PASS 1: PARALLEL DATA GATHERING (phases 1-5)
   echo "--- Pass 1 complete ---"
   wc -l "$D"/*.txt
   ```
-
-
 PASS 3: PARALLEL DATA GATHERING (phases 6-7)
-
-  ANTI-STALL: Write findings after each phase. Do not hold results
-  in context. If >3 tool calls with no findings written, flush now.
 
   ```bash
   F=/home/claude/audit-src/script.fish
@@ -464,12 +250,7 @@ PASS 3: PARALLEL DATA GATHERING (phases 6-7)
   wait
   wc -l "$D"/phase{6,7}-raw.txt
   ```
-
-
 PASS 4: PARALLEL DATA GATHERING (phases 8-11)
-
-  ANTI-STALL: Write findings after each phase. Do not hold results
-  in context. If >3 tool calls with no findings written, flush now.
 
   ```bash
   F=/home/claude/audit-src/script.fish
@@ -483,7 +264,7 @@ PASS 4: PARALLEL DATA GATHERING (phases 8-11)
     echo "=== P8: ATOMIC ==="
     rg -n 'mv |install_file|chmod.*mv|symlink' "$F"
     echo "=== P8: LOCK ==="
-    rg -n 'mkdir.*lock|rmdir.*lock|kill -0|LOCK|flock|exec 9' "$F"
+    rg -n 'mkdir.*lock|rmdir.*lock|kill -0|LOCK|flock|exec 9|_LOCK_METHOD' "$F"
     echo "=== P8: LOG ==="
     rg -n '_log|_json_str|NDJSON|log_file|\.jsonl' "$F"
     echo "=== P8: BACKUP ==="
@@ -508,7 +289,7 @@ PASS 4: PARALLEL DATA GATHERING (phases 8-11)
     echo "=== P10: MAGIC ==="
     rg -n '[0-9]{3,}' "$F" | rg -v 'line|version|#|echo|printf'
     echo "=== P10: THRESHOLDS ==="
-    rg -n 'TEMP_|DISK_|BOOT_|MAX_LOGS|MAX_BACKUPS|CACHE_CLEAN|BOOT_TIME|WATCH_INTERVAL|ROOT_AVAIL' "$F"
+    rg -n 'TEMP_|DISK_|BOOT_|MAX_LOGS|MAX_BACKUPS|CACHE_CLEAN|BOOT_TIME|WATCH_INTERVAL|ROOT_AVAIL|NVME_LIFE' "$F"
     echo "=== P10: HARDCODED NUMBERS ==="
     rg -n 'test "\$.*" -lt [0-9]|test "\$.*" -gt [0-9]' "$F" | rg -v '_CRIT\|_WARN\|_MAX\|BOOT_SPACE'
     echo "=== P11: PREFLIGHT ==="
@@ -523,17 +304,16 @@ PASS 4: PARALLEL DATA GATHERING (phases 8-11)
     rg -n 'isatty|test -t|tty|WATCH_ONCE' "$F"
     echo "=== P11: ROLLBACK ==="
     rg -n 'rollback|undo|revert|restore|_backup' "$F"
+    echo "=== P11: PROFILE ==="
+    rg -n 'PROFILE|profile' "$F"
   ) > "$D/phase9-11-raw.txt" 2>&1 &
 
   wait
   wc -l "$D"/phase{8,9-11}-raw.txt
   ```
-
-
 PASS 5: RUNTIME TEST HARNESS (phase 12)
 
   All tests write to files. Analyze AFTER all tests complete.
-  STALL PREVENTION: Do NOT run tests one-at-a-time interactively.
 
   ```bash
   S=/home/claude/audit-src/script.fish
@@ -560,10 +340,16 @@ PASS 5: RUNTIME TEST HARNESS (phase 12)
     "--diagnose --json" "--json" \
     "--watch" "--watch --once" \
     "--no-log --version" "--no-log --lint" \
-    "--diff /etc/kernel/cmdline" "--diff relative/path"; do
+    "--diff /etc/kernel/cmdline" "--diff relative/path" \
+    "--profile --dry-run"; do
     fish "$S" $mode >/dev/null 2>&1
     printf '%s → %d\n' "$mode" "$?" >> "$D/exit-codes.txt"
   done
+
+  # --- --profile: timing output on stderr ---
+  fish "$S" --dry-run --profile --no-color >"$D/profile-out.txt" 2>"$D/profile-err.txt"
+  printf '--profile → %d\n' "$?" >> "$D/exit-codes.txt"
+  fish "$S" --dry-run --no-color >"$D/noprofile-out.txt" 2>"$D/noprofile-err.txt"
 
   # --- --watch --once: non-tty single snapshot (piped stdin) ---
   echo "" | fish "$S" --watch --once >"$D/once-notty-out.txt" 2>"$D/once-notty-err.txt"
@@ -620,14 +406,12 @@ PASS 5: RUNTIME TEST HARNESS (phase 12)
   bat --plain "$D/once-notty-out.txt" | head -5
   echo "=== REDIRECT REGRESSION ==="
   bat --plain "$D/redirect-err.txt"
+  echo "=== PROFILE ==="
+  rg -c '\[PROFILE\]' "$D/profile-err.txt" 2>/dev/null || echo "0"
+  echo "=== NO PROFILE (expect 0) ==="
+  rg -c '\[PROFILE\]' "$D/noprofile-err.txt" 2>/dev/null || echo "0"
   ```
-
-
 PASS 6: GAP ANALYSIS (phase 13)
-
-  STALL PREVENTION: Trace ONE function at a time. Write
-  "PASS funcname" or finding to file after each. Do not
-  hold multiple function analyses in context.
 
   ```bash
   F=/home/claude/audit-src/script.fish
@@ -658,9 +442,11 @@ PASS 6: GAP ANALYSIS (phase 13)
   rg -n '_WATCH_COLS|WATCH_ONCE|set --erase.*WATCH' "$F" \
     > /home/claude/audit-data/gap-watch-trace.txt
 
-  # flock fallback path tracing:
-  rg -n 'exec 9|flock|_LOCK_METHOD|mkdir.*LOCK' "$F" \
-    > /home/claude/audit-data/gap-flock-trace.txt
+  # Lock mechanism regression (mkdir-only, no flock/exec fd):
+  rg -n 'flock|exec 9|_LOCK_METHOD.*flock' "$F" \
+    > /home/claude/audit-data/gap-lock-regression.txt
+  rg -n 'mkdir.*LOCK|rmdir.*LOCK|find.*LOCK|verify_pid' "$F" \
+    > /home/claude/audit-data/gap-lock-trace.txt
 
   # External command existence checks:
   rg -oP '(?:sudo\s+)?(?:command\s+)?\b(pacman|systemctl|mkinitcpio|modprobe|udevadm|systemd-analyze|journalctl|findmnt|lsblk|ip|tee|install|mkdir|chmod|chown|mv|cp|rm|cat|sort|wc|diff|date|sleep|kill|pkill|stat|head|tail|cut|tr|awk|sed|grep|find|mktemp|read)\\b' "$F" \
@@ -680,42 +466,14 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   wc -l /home/claude/audit-data/gap-*.txt
   ```
-
-
 ═══════════════════════════════════════════════════════════════
- ── PASS 2: STATIC ANALYSIS ── Analyze Pass 1 data against
- Phases 1-5 below. Batch checks using gathered data files.
- Write findings as discovered. Do not hold >1 phase unsaved.
+ PASS 2: STATIC ANALYSIS — Analyze Pass 1 data against
+ Phases 1-5 below. Write findings as discovered.
 ═══════════════════════════════════════════════════════════════
-
-  ANTI-STALL: Batch Phase 1-5 analysis. Run parallel subshells.
-  Flush findings to file immediately after each phase pair.
-
-  ```bash
-  D=/home/claude/audit-data
-  O=/home/claude/audit-findings.txt
-
-  # Phases 1-2 in parallel
-  (bat --plain "$D/phase1-raw.txt" "$D/phase2-raw.txt" | \
-    rg '===|BASHISM|ROUTING|MSG' >> "$O") &
-
-  # Phases 3-4 in parallel
-  (bat --plain "$D/phase3-raw.txt" "$D/phase4-raw.txt" | \
-    rg '===|EXIT|STATUS|SIGNAL|CLEANUP|SCOPE|LOOP' >> "$O") &
-
-  # Phase 5 in parallel
-  (rg '===|INJECTION|TMPFILE|CREDS|PERMS|SUDO' "$D/phase5-raw.txt" >> "$O") &
-
-  wait
-  echo "PASS 2: $(rg -c '^F-' "$O" 2>/dev/null || echo 0) findings written"
-  ```
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 1: FISH SYNTAX & COMPLIANCE (20 checks)
 ═══════════════════════════════════════════════════════════════
 
-  Scan: rg -n '$pattern' "$F" | rg -v 'awk|ExecStart|#.*lint'
   Exempt: Hits in embedded content (ExecStart, awk, heredocs,
   lint self-checkers) are NOT findings.
 
@@ -748,8 +506,6 @@ PASS 6: GAP ANALYSIS (phase 13)
   1.5  SYNTAX VALIDATION
        [ ] 19.  fish --no-execute passes on entire script
        [ ] 20.  No syntax errors in embedded fish content (conf.d scripts)
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 2: STDERR / STDOUT ROUTING (18 checks)
 ═══════════════════════════════════════════════════════════════
@@ -781,8 +537,6 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 38.  Early init (root check, env setup) does NOT emit output
                before option parsing reaches --help/--version.
                Pattern: set flag silently, defer warnings until after parse.
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 3: ERROR HANDLING & EXIT CODES (23 checks)
 ═══════════════════════════════════════════════════════════════
@@ -822,8 +576,6 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 60.  Cleanup function is idempotent (safe to call multiple times)
        [ ] 61.  Cleanup sweeps /tmp for script-prefixed temp files by UID
                (find -name 'prefix-*' -user $UID -delete)
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 4: VARIABLE HANDLING (24 checks)
 ═══════════════════════════════════════════════════════════════
@@ -868,8 +620,6 @@ PASS 6: GAP ANALYSIS (phase 13)
   4.6  QUOTING
        [ ] 84.  Variables in test/string commands quoted ("$var")
        [ ] 85.  File path variables quoted in all contexts
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 5: SECURITY (37 checks)
 ═══════════════════════════════════════════════════════════════
@@ -923,26 +673,12 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 120. Country codes: validated against known set, uppercased
        [ ] 121. File paths: canonicalized, no directory traversal
        [ ] 122. Numeric inputs: validated as integers, range-checked
-
-
-═══════════════════════════════════════════════════════════════
- ── PASS 3 BOUNDARY ── Save progress now. Flush all Phase 1-5
- findings to audit-findings.txt before continuing.
-═══════════════════════════════════════════════════════════════
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 6: EMBEDDED CONFIG CONTENT (47 checks)
 ═══════════════════════════════════════════════════════════════
 
-  For scripts that generate config files, verify each embedded
-  config matches its specification format. Refer to CONFIG SYNTAX
-  REFERENCE table above for format rules.
-
-  Script manages three destination arrays:
-    SYSTEM_DESTINATIONS  — 12 files (boot, kernel, system configs)
-    USER_DESTINATIONS    — 3 files (fish conf.d, environment.d, systemd user)
-    SERVICE_DESTINATIONS — 2 files (systemd system service units)
+  Verify each embedded config matches its format specification.
+  Three destination arrays: SYSTEM (12), USER (3), SERVICE (2).
 
   6.1  SYSTEMD-BOOT (loader.conf)
        [ ] 123. Format: key<space>value (NO = sign)
@@ -953,7 +689,7 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 126. UUID dynamically resolved (not hardcoded)
        [ ] 127. Parameters space-separated, no trailing whitespace
        [ ] 128. modprobe.d is blacklist-only (no options lines since v2.5.0;
-               all module params in kernel cmdline)
+               all module params in kernel cmdline). [Format rule]
 
   6.3  SDBOOT-MANAGE
        [ ] 129. Format: KEY="VALUE" (shell-style quoting)
@@ -973,7 +709,7 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   6.5  MODPROBE
        [ ] 139. No "options" lines in modprobe output (blacklist-only since v2.5.0;
-               regression guard — verify get_file_content modprobe case has no options loop)
+               regression guard — verify get_file_content modprobe case). [Content]
        [ ] 140. blacklist format: blacklist <module>
        [ ] 141. Module names validated via modprobe -n
        [ ] 142. Blacklist entries cross-referenced with cmdline
@@ -1028,13 +764,11 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 168. Proper guards (status is-interactive, set -q checks)
        [ ] 169. SSH auth sock priority ordering documented and correct
                (forwarded > gcr > systemd, checked in that order)
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 7: CROSS-REFERENCES & CONSISTENCY (25 checks)
 ═══════════════════════════════════════════════════════════════
 
-  Refer to CROSS-REFERENCE PAIRS table above for sync targets.
+  See userPreferences [AUDIT] cross_refs for sync targets.
 
   7.1  VERSION SYNC
        [ ] 170. Header comment version matches global variable
@@ -1056,7 +790,7 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   7.3  PARAMETER CROSS-REFS
        [ ] 180. modprobe.d contains blacklist entries only (no options lines;
-               no MODPROBE_OPTIONS variable; regression guard since v2.5.0)
+               no MODPROBE_OPTIONS variable; regression guard). [Cross-ref]
        [ ] 181. MKINITCPIO_MODULES match modules needed for hardware
        [ ] 182. Blacklist entries consistent between cmdline and modprobe.d
        [ ] 183. ENV_VARS match between environment.d and runtime verification
@@ -1067,8 +801,8 @@ PASS 6: GAP ANALYSIS (phase 13)
                --diagnose --stress, --diagnose --json, --watch --interval N,
                --watch --once)
        [ ] 186. Standalone modifier flags (--fix, --stress, --json, --interval,
-               --once, --no-log) appear as separate entries in README options
-               table, not only as combined examples
+               --once, --no-log, --profile) appear as separate entries in
+               README options table, not only as combined examples
        [ ] 187. --logs sub-targets documented (analyze, last, all, list,
                system, gpu, wifi, boot, audio, usb, kernel, <service>)
        [ ] 188. --install-file usage and path requirement documented
@@ -1081,14 +815,7 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 193. --watch --once documented in README options table (v2.8.0)
        [ ] 194. README sample output present for complex modes
                (e.g., --diagnose sample output section) (v2.8.0)
-
-
-═══════════════════════════════════════════════════════════════
- ── PASS 4 BOUNDARY ── Save progress now. Flush all Phase 6-7
- findings to audit-findings.txt before continuing.
-═══════════════════════════════════════════════════════════════
-
-
+               --profile documented in OPTIONS section (v2.8.1)
 ═══════════════════════════════════════════════════════════════
  PHASE 8: FUNCTION ARCHITECTURE (37 checks)
 ═══════════════════════════════════════════════════════════════
@@ -1122,12 +849,15 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   8.5  LOCK FILE
        [ ] 213. Prevents concurrent execution
-       [ ] 214. Lock uses atomic primitive (flock primary, mkdir fallback)
-       [ ] 215. Stale locks reclaimed (kill -0 check)
+       [ ] 214. Lock uses atomic mkdir primitive (mkdir-only since v2.8.2;
+               no flock, no exec fd redirection)
+       [ ] 215. Stale locks reclaimed (kill -0 check + find cleanup +
+               rmdir + re-mkdir for atomic re-acquisition)
        [ ] 216. Lock cleaned up on exit (all paths)
        [ ] 217. PID stored inside lock dir (not the lock mechanism itself)
-       [ ] 218. flock exec 9> failure detected and falls through to mkdir
-               fallback (not false "another instance" error) (v2.8.0)
+       [ ] 218. REGRESSION GUARD (v2.8.2): No flock, exec 9>, or
+               _LOCK_METHOD=flock references remain. Lock is mkdir-only.
+               Scan: rg 'flock|exec 9|_LOCK_METHOD.*flock' — expect 0 hits.
 
   8.6  BACKUP SUBSYSTEM
        [ ] 219. _backup_init creates dated backup dir under BACKUP_BASE
@@ -1160,8 +890,6 @@ PASS 6: GAP ANALYSIS (phase 13)
                do_func "$TARGET" (not do_func $TARGET).
                Prevents word splitting on paths with spaces.
                Scan: rg 'do_\w+ \$' — all hits should use quotes.
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 9: PATTERNS & ANTI-PATTERNS (15 checks)
 ═══════════════════════════════════════════════════════════════
@@ -1180,20 +908,17 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 239. Bare find without command prefix (fish may shadow)
        [ ] 240. head -1 / tail -1 (deprecated — use -n 1)
        [ ] 241. Nested command substitution without clarity
-       [ ] 242. string trim < "$file" 2>/dev/null on files that may not
-               exist — FISH REDIRECT BUG. Fish resolves redirects before
-               running the command; missing file emits unsilenceable
-               "Path does not exist" warning to stderr. Correct pattern:
-               string trim -- (cat -- "$file" 2>/dev/null) (v2.7.4/v2.8.0)
+       [ ] 242. FISH REDIRECT BUG: string trim < "$file" 2>/dev/null on
+               files that may not exist leaks unsilenceable stderr.
+               Use: string trim -- (cat -- "$file" 2>/dev/null)
                Scan: rg 'string (trim|match|replace).*<' | rg -v '#|test -f'
+               Requires RUNTIME test — static analysis cannot catch this.
 
   9.3  STYLE CONSISTENCY
        [ ] 243. Consistent indentation (spaces, not tabs)
        [ ] 244. Functions ≤50 lines where practical
        [ ] 245. No dead code (unreachable branches, unused functions)
        [ ] 246. Comments explain WHY, not WHAT
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 10: MAGIC NUMBERS & DOCUMENTATION (19 checks)
 ═══════════════════════════════════════════════════════════════
@@ -1212,7 +937,9 @@ PASS 6: GAP ANALYSIS (phase 13)
                (units: percentage for root, MB for boot)
        [ ] 255. Root available space thresholds named:
                ROOT_AVAIL_CRIT, ROOT_AVAIL_WARN (units: GB; check_disk_space
-               preflight). No hardcoded literals in comparisons. (v2.8.0)
+               preflight). NVMe wear threshold named: NVME_LIFE_WARN
+               (units: percentage used). No hardcoded literals in
+               comparisons. (v2.8.0, NVME added v2.8.1)
        [ ] 256. Rotation limits named and documented:
                MAX_LOGS, MAX_BACKUPS, CACHE_CLEAN_THRESHOLD
        [ ] 257. BOOT_TIME_WARN, BOOT_TIME_TARGET documented
@@ -1228,8 +955,6 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 263. README has quick-start, options table, and config reference
        [ ] 264. Changelog covers all versions with breaking changes noted
        [ ] 265. License file present
-
-
 ═══════════════════════════════════════════════════════════════
  PHASE 11: TESTING & VALIDATION (23 checks)
 ═══════════════════════════════════════════════════════════════
@@ -1273,30 +998,14 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 286. Every destructive operation has undo path or --dry-run guard
        [ ] 287. Backup created before overwrite of existing files
        [ ] 288. Recovery instructions documented for failed mid-run
-
-
 ═══════════════════════════════════════════════════════════════
- ── PASS 5 BOUNDARY ── Save progress now. Flush all Phase 8-11
- findings to audit-findings.txt before continuing to runtime.
+ PHASE 12: RUNTIME EXECUTION TESTING (29 checks)
 ═══════════════════════════════════════════════════════════════
 
-
-═══════════════════════════════════════════════════════════════
- PHASE 12: RUNTIME EXECUTION TESTING (28 checks)
-═══════════════════════════════════════════════════════════════
-
-  CRITICAL: Phases 1-11 are static analysis. This phase EXECUTES
-  the script in fish and verifies actual behavior. Static analysis
-  cannot catch execution-order bugs (e.g., warnings emitted before
-  option parsing, DRY-RUN gates that look correct but don't fire,
-  fish redirect behavior on missing files).
-
+  Phases 1-11 are static analysis. This phase EXECUTES the script
+  in fish and verifies actual behavior against the output contract.
   Prerequisite: fish installed, script accessible at known path.
   Use the runtime test harness from PASS 5 above.
-
-  STALL PREVENTION: Run all stdout/stderr tests in parallel (&).
-  Run all exit-code tests in a single loop. Write results to files,
-  then analyze. Do NOT run tests one-at-a-time interactively.
 
   12.1 STDOUT / STDERR SEPARATION
        [ ] 289. --help: stdout has content, stderr is empty (0 bytes)
@@ -1309,7 +1018,8 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   12.2 EXIT CODE MATRIX
        [ ] 293. exit 0: --help, -h, --version, -v, --lint, --completions,
-               --test-all (all subtests pass), --logs list, --logs system
+               --test-all (all subtests pass), --logs list, --logs system,
+               --profile (modifier, no standalone mode)
        [ ] 294. exit 2: invalid flag, conflicting modes, modifier without
                parent (--fix alone, --stress alone, --once alone),
                --interval missing/bad value, --install-file without path,
@@ -1336,7 +1046,9 @@ PASS 6: GAP ANALYSIS (phase 13)
 
   12.4 NO_COLOR ENFORCEMENT
        [ ] 304. --no-color: rg -cP '\x1b\[' finds ZERO ANSI escapes
-               across ALL modes (test each mode with --no-color)
+               across ALL modes (test each mode with --no-color).
+               Includes do_watch clear-screen escape (\033[2J\033[H)
+               which must fall back to newlines when NO_COLOR (v2.8.3).
 
   12.5 DRY-RUN VERIFICATION
        [ ] 305. --dry-run: [DRY] messages appear in output, no files
@@ -1367,24 +1079,17 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 316. --once without --watch: emits WARN and resets to false
                (does not exit 2; graceful degradation)
 
-
-═══════════════════════════════════════════════════════════════
- ── PASS 6 BOUNDARY ── Save progress now. Flush all Phase 12
- runtime findings to audit-findings.txt before gap analysis.
-═══════════════════════════════════════════════════════════════
-
-
+  12.9 --PROFILE VERIFICATION (v2.8.1)
+       [ ] 325. --profile: [PROFILE] timing messages appear on stderr
+               for modes with progress steps (e.g., --dry-run --profile).
+               Respects NO_COLOR (printf plain vs set_color magenta).
+               No [PROFILE] output when flag not set.
 ═══════════════════════════════════════════════════════════════
  PHASE 13: GAP ANALYSIS & EDGE CASES (8 checks)
 ═══════════════════════════════════════════════════════════════
 
   After all other phases, systematically check categories that
-  static analysis tends to miss. Each check requires tracing
-  actual code paths, not just pattern-matching.
-
-  STALL PREVENTION: Trace ONE function at a time. Write
-  "PASS funcname" or finding to file after each. Do not hold
-  multiple function analyses in context.
+  static analysis tends to miss. Trace actual code paths.
 
   13.1 RACE CONDITIONS (TOCTOU) & CONCURRENCY
        [ ] 317. Symlink checks: mktemp creates with O_EXCL; any gap
@@ -1413,21 +1118,13 @@ PASS 6: GAP ANALYSIS (phase 13)
        [ ] 323. do_watch: terminal resize handled (WATCH_COLS re-read
                each loop iteration), _WATCH_COLS cleaned up on exit
 
-  13.5 LOCK FALLBACK PATH (v2.8.0)
-       [ ] 324. flock exec 9> failure: trace that control flow reaches
-               mkdir-based fallback lock (not early return with error).
-               Verify: exec failure → _log message → fall through outer
-               if/end → reach mkdir "$LOCK_DIR" fallback. No false
-               "another instance" message on exec failure path.
-
-
+  13.5 LOCK REGRESSION GUARD (v2.8.2)
+       [ ] 324. Trace _acquire_lock: mkdir-only, no flock/exec remnants
+               (see also check 218). Stale reclaim uses find + rmdir +
+               re-mkdir with -- terminators. verify_pid race check present.
 ═══════════════════════════════════════════════════════════════
  PASS 7: FINALIZE (summary table + spec file + zip)
 ═══════════════════════════════════════════════════════════════
-
-  ANTI-STALL: This pass assembles deliverables. If any prior pass
-  is incomplete, mark those phases SKIPPED in the summary table
-  with reason. Do NOT re-run skipped phases — deliver what exists.
 
   STEP 1: COLLATE FINDINGS
 
@@ -1464,33 +1161,15 @@ PASS 6: GAP ANALYSIS (phase 13)
   STEP 4: PACKAGE DELIVERABLES
 
   ```bash
-  S=script  # replace with actual script name
-  V=x.y.z   # replace with actual version
-  OUT=/mnt/user-data/outputs
-
-  # Write audit and spec to output directory
-  cp /home/claude/audit-${S}-${V}.txt "$OUT/"
-  cp /home/claude/fixes-spec-${V}.txt "$OUT/"
-
-  # Create zip bundle
-  cd /home/claude
-  zip "${OUT}/audit-${S}-${V}.zip" \
-    "audit-${S}-${V}.txt" \
-    "fixes-spec-${V}.txt"
-
-  # Verify deliverables
-  eza -la "${OUT}"/audit-* "${OUT}"/fixes-* 2>/dev/null || ls -la "${OUT}"/audit-* "${OUT}"/fixes-*
+  S=script; V=x.y.z; OUT=/mnt/user-data/outputs
+  cp /home/claude/audit-${S}-${V}.txt /home/claude/fixes-spec-${V}.txt "$OUT/"
+  cd /home/claude && zip "${OUT}/audit-${S}-${V}.zip" audit-${S}-${V}.txt fixes-spec-${V}.txt
   ```
 
-  STEP 5: FINAL VERDICT
+  STEP 5: VERDICT
 
-  Based on findings:
-    - 0 actionable findings          → deploy-ready
-    - Any BUG/STYLE, all Low impact  → fix-required
-    - Any HIGH/CRITICAL impact       → fix-required (urgent)
-    - Architectural issues            → redesign-needed
-
-
+  0 actionable → deploy-ready | BUG/STYLE only → fix-required |
+  HIGH/CRITICAL → fix-required (urgent) | Architectural → redesign-needed
 ═══════════════════════════════════════════════════════════════
  OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════
@@ -1503,24 +1182,11 @@ SEVERITY TAXONOMY:
   INFO      — Observation, no action required
 
 For each finding, record:
+  F-N | Severity (CRITICAL/HIGH/MED/LOW/INFO) | Phase | Checks |
+  Lines | Category (from userPreferences [AUDIT] checklist) |
+  Detail | Fix
 
-  ID       Sequential (F-1, F-2, ...)
-  Severity CRITICAL | HIGH | MED | LOW | INFO
-  Phase    Which phase above (1-13)
-  Checks   Which check numbers affected
-  Lines    Affected line numbers in script
-  Category From checklist: inputs, syntax, strict-modes, entry-points,
-           arg-contract, exit-codes, ext-cmd-audit, idempotency,
-           file-writes, security, signals, var-scope, rollback,
-           privilege-sep, path-safety, output-contract, cross-refs,
-           docs, compat, systemd, pacman, networking, concurrency,
-           logging, lint, dry-run, test-matrix
-  Detail   What's wrong and why
-  Fix      Recommended change (or "not needed")
-
-Per-finding table (one row per issue, sort CRITICAL→INFO):
-
-  # | Line(s) | Severity | Category | Finding | Fix
+Per-finding table: # | Line(s) | Severity | Category | Finding | Fix
 
 Phase summary table:
 
@@ -1537,45 +1203,30 @@ Phase summary table:
   9      | 15     |      |      |
   10     | 19     |      |      |
   11     | 23     |      |      |
-  12     | 28     |      |      |
+  12     | 29     |      |      |
   13     | 8      |      |      |
-  TOTAL  | 324    |      |      |
+  TOTAL  | 325    |      |      |
 
 Append summary counts by severity after both tables:
 
   CRITICAL: N | HIGH: N | MED: N | LOW: N | INFO: N
 
   Notes:
-  - Checks 232-235 are false-positive documentation, always PASS
-    if the auditor correctly identifies them as non-issues.
-  - Phase 12 checks REQUIRE fish execution — cannot be done
-    with static analysis alone.
-  - Checks 296, 298: --json, --interval, --once without matching mode
-    produce WARN (not exit 2) — verify runtime behavior, not just
-    static pattern matching.
-  - Checks 310-316 verify v2.6.0+ features (--watch tty gating,
-    --no-log suppression, --diff <path> validation, --watch --once).
-  - Check 242: fish redirect regression — requires RUNTIME test with
-    missing file paths and stderr byte counting. Static analysis
-    CANNOT catch this class of bug.
+  - Checks 232-235: false-positive documentation, always PASS.
+  - Phase 12: REQUIRES fish execution — static analysis insufficient.
+  - Checks 296, 298: --json/--interval/--once without parent mode
+    produce WARN (not exit 2) — verify at runtime.
+  - Check 242: fish redirect regression — RUNTIME only.
+  - Checks 218, 324: lock regression guards — expect 0 flock hits.
+  - Check 325: --profile — [PROFILE] on stderr, NO_COLOR respected.
 
 Final verdict: deploy-ready | fix-required | redesign-needed
 
-PARTIAL COMPLETION PROTOCOL:
-  If the audit cannot complete all 13 phases (stall, timeout,
-  tool failure, context limit), the auditor MUST:
-  1. Save all findings gathered so far to audit-findings.txt
-  2. Mark incomplete phases as SKIPPED in the summary table:
-       Phase | Checks | Pass | Fail | Info
-       13    | 8      | SKIPPED — tool timeout after 3 retries
-  3. Add a COVERAGE section to the audit file:
-       COVERAGE: 12/13 phases complete (92%)
-       SKIPPED:  Phase 13 — fish not available in container
-  4. Still produce the spec file for completed findings
-  5. Set verdict to: incomplete — N/13 phases audited
-  6. Deliver partial results rather than nothing
-
-
+PARTIAL COMPLETION:
+  If audit cannot complete all phases: save findings so far, mark
+  incomplete phases SKIPPED with reason in summary table, add
+  COVERAGE line (e.g., "12/13 phases, 92%"), still produce spec
+  file for completed findings, set verdict "incomplete — N/13".
 ═══════════════════════════════════════════════════════════════
  SPEC FILE OUTPUT (produce after audit completes)
 ═══════════════════════════════════════════════════════════════
@@ -1590,70 +1241,37 @@ SPEC FILE FORMAT:
 
   ```
   FIXES SPEC: <script-name> <current-version> → <new-version>
-  ============================================================
-  Date:     YYYY-MM-DD
-  Findings: N total (N CRITICAL, N HIGH, N MED, N LOW, N INFO)
-  Scope:    Files modified, version bump, changelog
+  Date: YYYY-MM-DD | Findings: N (N CRIT, N HIGH, N MED, N LOW, N INFO)
 
-  ┌─────────────────────────────────────────────────────────┐
-  │ FIX INSTRUCTIONS                                        │
-  └─────────────────────────────────────────────────────────┘
+  --- FIX INSTRUCTIONS ---
 
-  F-1  [CRITICAL|HIGH|MED|LOW]  <one-line summary>
-       Checks:   <check numbers from audit>
-       Lines:    <N, N, N>
-       Category: <from checklist>
-       Before:   <exact text to find — copy-pasteable>
-       After:    <exact replacement text>
-       Verify:   <command to confirm fix>
+  F-1  [SEVERITY]  <one-line summary>
+       Checks: N,N  Lines: N,N  Category: <from checklist>
+       Before: <exact text — copy-pasteable>
+       After:  <exact replacement text>
+       Verify: <command to confirm fix>
 
-  F-2  ...
+  --- INFO (no action) ---
 
-  ┌─────────────────────────────────────────────────────────┐
-  │ INFO (no action required)                               │
-  └─────────────────────────────────────────────────────────┘
+  I-1  [INFO]  <description>  Checks: N  Lines: N
 
-  I-1  [INFO]  <description>
-       Checks:  <check numbers>
-       Lines:   <N, N, N>
-       Reason:  <why no fix needed>
-
-  ┌─────────────────────────────────────────────────────────┐
-  │ VERSION & CHANGELOG                                     │
-  └─────────────────────────────────────────────────────────┘
+  --- VERSION ---
 
   Bump: <old> → <new>
-  Files:
-    - script.fish line N: header comment
-    - script.fish line N: set -g VERSION
-    - README.md line N: version badge/header
+  Changelog: v<new> <one-line summary of all fixes>.
 
-  Changelog entry:
-    v<new> <one-line summary of all fixes>.
+  --- VERIFICATION ---
 
-  ┌─────────────────────────────────────────────────────────┐
-  │ VERIFICATION                                            │
-  └─────────────────────────────────────────────────────────┘
-
-  After applying all fixes, run:
-    1. fish --no-execute script.fish
-    2. rg '<old-version>' script.fish README.md  (expect 0 hits)
-    3. rg '<new-version>' script.fish README.md  (expect N hits)
-    4. <any script-specific lint/test commands>
+  1. fish --no-execute script.fish
+  2. rg '<old-version>' script.fish README.md  (expect 0)
+  3. rg '<new-version>' script.fish README.md  (expect N)
   ```
 
-SPEC FILE RULES:
-  - Every finding with severity CRITICAL/HIGH/MED/LOW gets a fix entry
-  - INFO findings listed separately, marked "no action required"
-  - Before/After text must be EXACT (copy-pasteable for sd/sed)
-  - Include enough context in Before to be unique in the file
-  - Verify command must be runnable and confirm the fix worked
-  - Version bump ALWAYS included if any actionable fixes exist
-  - Changelog entry summarizes ALL fixes in one sentence
-  - If no actionable findings: spec file says "No fixes required"
-    and omits the version bump section
-  - Spec file must be self-contained (no references to audit doc)
+SPEC RULES: Before/After must be exact (copy-pasteable). Spec is
+self-contained — no references to audit doc. Version bump always
+included if any actionable fixes exist. INFO findings listed
+separately marked "no action required".
 
 DELIVERABLES (zip together):
-  1. audit-<script>-<version>.txt   — full audit with all 324 checks
+  1. audit-<script>-<version>.txt   — full audit with all 325 checks
   2. fixes-spec-<version>.txt       — spec file for all fixes
