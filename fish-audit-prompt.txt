@@ -1,8 +1,29 @@
 FISH SHELL SCRIPT AUDIT PROMPT
 ===============================
-Version: 11.0.1
-Derived from: ry-install.fish v3.2.5 audit (2026-02-28)
-Changed: 11.0.1 Fix check 358 caller attribution (verify_runtime, not
+Version: 13.0.0
+Derived from: ry-install.fish v3.2.6 audit (2026-03-01)
+Changed: 13.0.0 Add Phase 15: supplemental deep checks (27 checks,
+               368-394). Covers fish_indent formatting, function length
+               analysis, PROGRESS_STEPS↔_progress sync, validate_configs
+               tmpfile leak tracing, install_file chmod/mv atomicity,
+               _chk_grep injection safety, numeric var initialization,
+               LOG_DIR/BACKUP_BASE paths, XDG_RUNTIME_DIR usage, sudo
+               keepalive lifecycle, _run quoting, hardcoded paths,
+               completions flag coverage, printf injection, word splitting,
+               dispatch↔help↔completions sync, do_test_all coverage,
+               INSTALL_HAD_ERRORS lifecycle, unreachable code, or-return
+               patterns, DESTINATIONS↔get_file_content, lock PID verify,
+               string -- separator, subshell injection, do_test_all tmpfile
+               cleanup, global state containment. Adds P15 data gathering
+               block. 391 checks (was 364).
+         12.0.0 Sync v3.2.5→v3.2.6: 63 function comments (81/81
+               documented); 12 section headers (# ── ... ── markers);
+               README fixes (--gaming modifiers table, exit 141 in exit
+               codes, --diagnose --gaming sub-option); --gaming tab-
+               completion in do_completions; redundant combined README
+               entries removed. Phase 14: +2 checks (366-367).
+               364 checks (was 362).
+         11.0.1 Fix check 358 caller attribution (verify_runtime, not
                verify_static). Add PASS 4 gap traces for checks 363-365
                (dotfile glob, timestamp cache, string match separator
                regressions). Add -a --dry-run to check 293 exit 0 list.
@@ -50,12 +71,12 @@ Changed: 11.0.1 Fix check 358 caller attribution (verify_runtime, not
                comment/README trimming (v2.8.5-v2.8.9); 326 checks (was 325).
                Rewrite: consolidate passes, trim setup/explanations (~55% smaller).
          (Full history: 3.3.0→6.0.0 in git)
-Checks: 362
-Phases: 14 (11 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.2.5 specifics)
+Checks: 391
+Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.2.6 specifics)
 
 PURPOSE
 -------
-362-check audit for production fish scripts managing system config,
+391-check audit for production fish scripts managing system config,
 sudo, credentials, embedded configs, and multi-mode dispatch with
 backup/verification subsystems.
 
@@ -88,6 +109,14 @@ KEY LESSONS (encoded as checks):
   - sysfs direct reads avoid forking external tools → 360
   - Extract optional diagnostics behind feature flags → 361
   - Dead globals are regression vectors → 362
+  - Section headers mark major code regions for navigation → 366
+  - Every function needs both --description AND explanatory comment → 367
+  - fish_indent validates canonical formatting beyond syntax → 368
+  - PROGRESS_STEPS must match _progress calls exactly → 371
+  - Tmpfile leak tracing: count mktemp vs rm-f per branch → 372
+  - Numeric test vars must be initialized before comparison → 375
+  - Dispatch, help, and completions must cover same flag set → 384
+  - Global state mutations need clear lifecycle contracts → 386
 
 ───────────────────────────────────────────────────────────────
  SETUP
@@ -149,11 +178,11 @@ RULES: Work continuously. Batch tool calls. Parallel when independent.
   Write findings: echo "F-N ..." >> /home/claude/audit-findings.txt
 
 ORDER:
-  PASS 1 — DATA GATHER    phases 1-11,14  (compound parallel commands)
-  PASS 2 — STATIC         phases 1-11,14  (analyze gathered data)
-  PASS 3 — RUNTIME        phase 12        (fish execution tests)
-  PASS 4 — GAP ANALYSIS   phase 13        (race/error/edge tracing)
-  PASS 5 — FINALIZE       —               (summary + spec + zip)
+  PASS 1 — DATA GATHER    phases 1-11,14-15 (compound parallel commands)
+  PASS 2 — STATIC         phases 1-11,14-15 (analyze gathered data)
+  PASS 3 — RUNTIME        phase 12          (fish execution tests)
+  PASS 4 — GAP ANALYSIS   phase 13          (race/error/edge tracing)
+  PASS 5 — FINALIZE       —                 (summary + spec + zip)
 
 PASS 1: DATA GATHERING (single compound block)
 
@@ -258,7 +287,43 @@ PASS 1: DATA GATHERING (single compound block)
     echo "=== DOTFILE CLEAN ===" && rg -n 'mindepth 1.*exec|find.*mindepth.*rm' "$F"
     echo "=== LOG TIMESTAMP ===" && rg -n '_TS_CACHE|/proc/uptime' "$F"
     echo "=== STRING MATCH SEPARATOR ===" && rg -n "string match.*' -- '" "$F"
+    echo "=== SECTION HEADERS ===" && rg -nc '^# ── ' "$F"
+    echo "=== SECTION HEADER LINES ===" && rg -n '^# ── ' "$F"
+    echo "=== FUNCTION COMMENT COVERAGE ===" && awk '/^# /{cmt=NR} /^function /{if(NR-cmt<=2) n++} END{print n"/81 functions with nearby comment"}' "$F"
   ) > "$D/p14.txt" 2>&1 &
+
+  # P15: supplemental deep checks
+  (
+    echo "=== FISH_INDENT ===" && fish_indent --check "$F" 2>&1; echo "exit: $?"
+    echo "=== FUNC LENGTHS ===" && awk '/^function [a-z_]/ { if(fname!="" && NR-fstart>50) printf "%-40s L%-5d %d lines\n", fname, fstart, NR-fstart; fname=$2; sub(/ .*/, "", fname); fstart=NR } END { if(fname!="" && NR-fstart>50) printf "%-40s L%-5d %d lines\n", fname, fstart, NR-fstart }' "$F"
+    echo "=== FUNC >100 ===" && awk '/^function [a-z_]/ { if(fname!="" && NR-fstart>100) printf "%-40s L%-5d %d lines\n", fname, fstart, NR-fstart; fname=$2; sub(/ .*/, "", fname); fstart=NR } END { if(fname!="" && NR-fstart>100) printf "%-40s L%-5d %d lines\n", fname, fstart, NR-fstart }' "$F"
+    echo "=== PROGRESS DEFINED ===" && sed -n '/set -g PROGRESS_STEPS/,/set -g PROGRESS_TOTAL/p' "$F" | rg '"' | sed 's/.*"\(.*\)".*/\1/'
+    echo "=== PROGRESS CALLED ===" && rg '_progress "' "$F" | rg -v '#|function' | sed 's/.*_progress "\(.*\)".*/\1/' | sort
+    echo "=== TMPFILE LIFECYCLE ===" && for func in $(rg -oP '(?<=^function )\w+' "$F" | sort -u); do mk=$(sed -n "/^function $func /,/^end$/p" "$F" | rg -c 'mktemp' 2>/dev/null); rm=$(sed -n "/^function $func /,/^end$/p" "$F" | rg -c 'rm -f' 2>/dev/null); test "$mk" -gt 0 2>/dev/null && echo "$func: mktemp=$mk rm-f=$rm"; done
+    echo "=== CHMOD MV ORDER ===" && rg -Un 'chmod.*\nmv \|chmod.*\nsudo mv' "$F" | head -10
+    echo "=== CHK_GREP IMPL ===" && sed -n '/^function _chk_grep/,/^end$/p' "$F" | rg 'grep'
+    echo "=== NUMERIC VAR INIT ===" && for v in errors pad total_err line_count ret idx_a idx_b perm_bad perm_checked bad_perms fixed_count read_ok verify_status; do init=$(rg -c "set -l $v " "$F" 2>/dev/null); use=$(rg -c "test \\\$$v " "$F" 2>/dev/null); echo "$v: init=$init test=$use"; done
+    echo "=== LOG BACKUP PATHS ===" && rg -n 'set -g.*ry-install' "$F"
+    echo "=== XDG USAGE ===" && rg -n 'XDG_' "$F"
+    echo "=== SUDO KEEPALIVE ===" && rg -n 'SUDO_KEEPALIVE' "$F"
+    echo "=== RUN QUOTING ===" && rg -n '_run ' "$F" | rg -v '#|function |_log' | rg '\$[A-Z]' | rg -v '"'
+    echo "=== HARDCODED PATHS ===" && rg -n '/home/\|/root/' "$F" | rg -v '#|\$HOME|HOME|getent'
+    echo "=== COMPLETIONS FLAGS ===" && sed -n '/^function do_completions/,/^end$/p' "$F" | rg -oP '\-l ([a-z][-a-z]+)' | sort -u
+    echo "=== PRINTF INJECTION ===" && rg -n "printf '.*\\\$" "$F" | rg -v '%s|#|%%'
+    echo "=== UNQUOTED TEST ===" && rg -n 'test \$[a-z]' "$F" | rg -v '"' | head -20
+    echo "=== DISPATCH CASES ===" && awk '/Main dispatch/,/^end$/ { if(/^\s+case [a-z]/) print }' "$F"
+    echo "=== HELP FLAGS ===" && sed -n '/^function show_help/,/^end$/p' "$F" | rg -oP '\-\-[a-z][-a-z]+' | sort -u
+    echo "=== TEST_ALL BODY ===" && sed -n '/^function do_test_all/,/^end$/p' "$F" | head -30
+    echo "=== INSTALL_ERRORS LIFECYCLE ===" && rg -n 'INSTALL_HAD_ERRORS' "$F"
+    echo "=== UNREACHABLE ===" && rg -Un '(return [0-9]+|exit [0-9]+)\n\s+[a-z_]' "$F" | rg -v 'end$|else|#|function'
+    echo "=== OR RETURN ===" && rg -n 'or return [^0]' "$F"
+    echo "=== DEST CROSSREF ===" && rg -oP 'case "(/(boot|etc)[^"]+)"' "$F" | sort
+    echo "=== LOCK VERIFY ===" && rg -n 'verify_pid' "$F"
+    echo "=== STRING SEP ===" && rg -n 'string (trim|match|replace|split|join|sub|length|collect) [^-]' "$F" | rg -v -- '-- |#|"'
+    echo "=== SUBSHELL ===" && rg -n 'if test.*\(.*\)' "$F" | rg -v '#|string|count|math|dirname|basename|date'
+    echo "=== TEST_ALL TMPFILES ===" && sed -n '/^function do_test_all/,/^end$/p' "$F" | rg 'mktemp|rm -f'
+    echo "=== GLOBAL MUTATION ===" && rg -n 'set -g INSTALL_HAD_ERRORS' "$F"
+  ) > "$D/p15.txt" 2>&1 &
 
   wait
   wc -l "$D"/*.txt
@@ -670,7 +735,8 @@ PASS 4: GAP ANALYSIS (phase 13)
        [ ] 186. Modifiers as separate entries (--fix, --stress, --gaming, etc.)
        [ ] 187. --logs sub-targets documented
        [ ] 188. --install-file documented  [ ] 189. Exit codes documented
-               (must include 0, 1, 2, 130, 141 in both --help and README)
+               (must include 0, 1, 2, 130, 141 in both --help and README
+               exit codes table)
        [ ] 190. Prerequisites listed
 
   7.5  MODE CROSS-REFS
@@ -883,11 +949,12 @@ PASS 4: GAP ANALYSIS (phase 13)
                terminators, verify_pid race check present
 
 ═══════════════════════════════════════════════════════════════
- PHASE 14: v3.1.0–v3.2.5 SPECIFICS (36 checks)
+ PHASE 14: v3.1.0–v3.2.6 SPECIFICS (38 checks)
 ═══════════════════════════════════════════════════════════════
 
   Use PASS 1 P14 data. Verify helpers, sysctl, regressions, audit fixes,
-  race fixes, SIGPIPE, boot sanity, gaming flag, kernel param validation.
+  race fixes, SIGPIPE, boot sanity, gaming flag, kernel param validation,
+  section headers, function comment coverage.
 
   14.1 KVER GLOBALS (v3.1.0)
        [ ] 327. KVER, KVER_MAJOR, KVER_MINOR initialized at top level
@@ -967,11 +1034,11 @@ PASS 4: GAP ANALYSIS (phase 13)
                rg 'cat --' should show terminators in capture paths.
        [ ] 349. --description on all functions: every function declaration
                includes --description flag. Function count = description
-               count. rg -c '^function ' = rg -c -- '--description'.
-       [ ] 350. 71+ inline comments (v3.1.3): section headers, magic number
-               annotations, design rationale for lock, credentials, atomic
-               writes, hex normalization, vfat skip, NM/IWD gate, GKeyFile
-               escape. Spot-check: rg -c '#' shows comment density increase.
+               count = 81. rg -c '^function ' = rg -c -- '--description'.
+       [ ] 350. Comment density (v3.1.3+v3.2.6): 71+ inline comments from
+               v3.1.3, plus 63 function comments and 12 section headers
+               from v3.2.6. Spot-check: rg -c '#' shows density increase.
+               Section headers use `# ── Description ──` format.
 
   14.9 ORPHAN LOG & RACE FIXES (v3.2.2–v3.2.3)
        [ ] 351. Orphan log cleanup on early exit paths: every exit 2 in arg
@@ -1062,7 +1129,8 @@ PASS 4: GAP ANALYSIS (phase 13)
                  access (checks/issues from do_diagnose)
                - Function called conditionally: if GAMING=true in do_diagnose
                - --help documents --gaming flag and --diagnose --gaming combo
-               - Completions include --gaming
+               - Completions include --gaming (complete -c ... -l gaming)
+               - README modifiers table lists --gaming with Requires=--diagnose
 
   14.15 DEAD GLOBAL REMOVAL (v3.2.5)
        [ ] 362. MODULES_LOAD and _LOCK_METHOD globals removed.
@@ -1091,6 +1159,167 @@ PASS 4: GAP ANALYSIS (phase 13)
                not inside quoted string as literal text ' -- '. Verify
                the pattern uses `string match -q -- <pattern> <string>`
                form, not `string match -q '... -- ...' <string>`.
+
+  14.19 SECTION HEADERS (v3.2.6)
+       [ ] 366. 12 `# ── Description ──` section headers mark major code
+               regions: environment detection, fish version gate, timestamps,
+               retention limits, kernel version globals, cleanup state,
+               systemd-boot config, sdboot-manage, hardware config, progress
+               bar, mode exclusivity, main dispatch. Headers must be single-
+               line `# ── ... ──` format. rg -c '^# ── ' → 12.
+
+  14.20 FUNCTION COMMENT COVERAGE (v3.2.6)
+       [ ] 367. 81/81 functions have explanatory `#` comment within 2
+               lines before function declaration. These are distinct from
+               --description flags (check 349). Comments explain purpose
+               or context. Multiline comment blocks combined to single line.
+               Verify: awk count of functions with nearby `#` = 81.
+
+═══════════════════════════════════════════════════════════════
+ PHASE 15: SUPPLEMENTAL DEEP CHECKS (27 checks)
+═══════════════════════════════════════════════════════════════
+
+  Use PASS 1 P15 data. Covers formatting, architecture metrics,
+  lifecycle tracing, injection safety, initialization guards,
+  flag coverage sync, and global state contracts.
+
+  15.1 FORMATTING
+       [ ] 368. fish_indent --check passes with exit 0. Canonical
+               indentation throughout. No whitespace-only diff from
+               fish_indent output.
+
+  15.2 FUNCTION LENGTH ANALYSIS
+       [ ] 369. Functions >50 lines: enumerate all. Acceptable for
+               complex modes in a 7000+ line script. No function should
+               exceed its phase's complexity budget without justification.
+       [ ] 370. Functions >100 lines: enumerate all. These are the most
+               complex functions (verify_runtime, do_diagnose, show_help,
+               do_diff, etc). Each should be a self-contained mode handler
+               or dispatch target, not a utility function.
+
+  15.3 PROGRESS BAR SYNC
+       [ ] 371. PROGRESS_STEPS array (defined strings) matches _progress
+               call arguments exactly. Same count, same strings, no
+               orphaned steps or uncalled definitions. Sort both lists
+               and compare. Cross-ref: check 258 (PROGRESS_TOTAL computed).
+
+  15.4 TMPFILE LEAK TRACING
+       [ ] 372. For every function containing mktemp: count mktemp calls
+               vs rm-f calls. Every branch (success, error, early return)
+               must clean up. Key functions: validate_configs (7 mktemp,
+               8 rm-f), install_file (5 mktemp, 11 rm-f), do_completions,
+               _install_finalize, _install_system_files.
+               Cross-ref: check 319-320 (tmpfile lifecycle).
+
+  15.5 ATOMIC FILE OPERATIONS
+       [ ] 373. install_file: chmod BEFORE mv (not after). Symlink
+               TOCTOU guard: test -L on tmpfile immediately after mktemp,
+               abort if symlink. Both sudo and non-sudo paths follow
+               same order: mktemp → symlink check → write → chmod → mv.
+               Cross-ref: check 213 (atomic ops).
+
+  15.6 INJECTION SAFETY
+       [ ] 374. _chk_grep uses grep -qF -- (fixed-string match with
+               end-of-options separator). No regex interpretation of
+               user-controlled patterns. No unescaped variable expansion
+               in grep pattern position.
+       [ ] 382. printf injection: all user-controlled values interpolated
+               via %s format specifier, not bare $VAR in format string.
+               JSONL footer lines use %s for all dynamic fields. No
+               printf format string injection vectors.
+       [ ] 392. Subshell injection in conditionals: only safe builtins
+               used in command substitution within test expressions
+               (id -u, status current-filename). No user-controlled
+               data in subshell positions.
+
+  15.7 VARIABLE INITIALIZATION
+       [ ] 375. Every numeric variable used in test comparison has prior
+               set -l initialization with numeric value. Check all:
+               errors, pad, total_err, line_count, ret, idx_a, idx_b,
+               perm_bad, perm_checked, bad_perms, fixed_count, read_ok,
+               verify_status. Each must have init count ≥ test count.
+       [ ] 383. Word splitting in test: N/A in fish (fish does not word-
+               split variables). Unquoted $var in test is safe. Confirm
+               no bash-style word splitting issues in test expressions.
+
+  15.8 PATH SAFETY
+       [ ] 376. LOG_DIR and BACKUP_BASE use $HOME prefix
+               ($HOME/ry-install/{logs,backups}). No hardcoded /home/user
+               paths. XDG_DATA_HOME not applicable (logs are not desktop
+               data).
+       [ ] 380. No hardcoded /home/ or /root/ paths outside comments.
+               All user-relative paths use $HOME. rg '/home/|/root/'
+               excluding comments and $HOME references → 0 hits.
+
+  15.9 XDG AND ENVIRONMENT
+       [ ] 377. XDG_RUNTIME_DIR: used for SSH_AUTH_SOCK with priority
+               gcr > systemd. Guarded by set -q XDG_RUNTIME_DIR and
+               test -S socket checks. environment.d uses ${} syntax
+               (systemd expansion, not fish).
+
+  15.10 PROCESS LIFECYCLE
+       [ ] 378. Sudo keepalive: background process created with &,
+               PID captured to SUDO_KEEPALIVE_PID, disown'd, killed
+               in _do_cleanup, set --erase'd after kill. kill -0
+               verification after spawn. No orphan process on any
+               exit path (signal handlers call _do_cleanup).
+       [ ] 387. Unreachable code: no executable statements after
+               unconditional return/exit. Multiline rg may produce
+               false positives from end/else lines — filter those.
+               0 real unreachable code instances.
+
+  15.11 FLAG COVERAGE SYNC
+       [ ] 381. Completions (do_completions) include complete -c entries
+               for every CLI flag. Count complete -c lines. All long
+               flags from CLI parser represented.
+       [ ] 384. Dispatch switch cases, show_help documented flags, and
+               do_completions entries cover the same flag set. No flag
+               accepted by parser but missing from help or completions.
+               Modes in dispatch: diff, verify-static, verify-runtime,
+               lint, test-all, watch, clean, logs, diagnose, completions,
+               install-file, install. Modifiers: --all, --force,
+               --verbose, --dry-run, --no-color, --no-log, --profile,
+               --fix, --stress, --gaming, --interval, --watch.
+
+  15.12 TEST SUITE COVERAGE
+       [ ] 385. do_test_all: runs 16+ modes as fish subprocesses with
+               --verbose --no-color. Includes syntax pre-check
+               (fish --no-execute). Captures exit codes and stderr.
+               Reports pass/fail counts.
+       [ ] 393. do_test_all tmpfile cleanup: mktemp for stderr capture,
+               rm-f on both success and failure branches. No temp file
+               leak when mode subprocess fails.
+
+  15.13 GLOBAL STATE CONTRACTS
+       [ ] 386. INSTALL_HAD_ERRORS lifecycle: initialized false at top
+               level. Set to true in 36+ locations across install pipeline.
+               Checked in _install_finalize (2 return points) and main
+               dispatch (install_status + INSTALL_HAD_ERRORS). Never
+               reset to false mid-pipeline.
+       [ ] 394. Global state mutation containment: INSTALL_HAD_ERRORS
+               only mutated within install pipeline functions. Not
+               modified by read-only modes (verify, diff, lint, diagnose).
+
+  15.14 PATTERN CORRECTNESS
+       [ ] 379. _run invocation quoting: all _run calls with variable
+               arguments use proper quoting. 0 unquoted $VAR expansions
+               in _run arguments. rg '_run ' excluding comments/function
+               defs, filtering for unquoted vars → 0 hits.
+       [ ] 388. or return patterns: all 'or return N' instances are
+               correct guard patterns (return 1 after failed precondition).
+               No accidental 'or return' replacing '; and return'.
+       [ ] 389. DESTINATIONS arrays ↔ get_file_content: every path in
+               SYSTEM_DESTINATIONS has a matching case in get_file_content.
+               No orphaned cases, no missing destinations. Count match.
+               Cross-ref: check 186.
+       [ ] 390. Lock PID verify-after-write: _acquire_lock writes PID
+               to LOCK_FILE then re-reads and compares. Prevents race
+               where concurrent instance overwrites PID between mkdir
+               and write. Cross-ref: check 218, 324.
+       [ ] 391. string operations use -- separator consistently.
+               rg for string trim/match/replace/split/join/sub/length/
+               collect without -- → 0 hits (excluding comments and
+               quoted strings). Cross-ref: check 5.
 
 ═══════════════════════════════════════════════════════════════
  PASS 5: FINALIZE
@@ -1124,8 +1353,8 @@ STEP 2: SUMMARY TABLE
   11     | 23     |      |      |
   12     | 27     |      |      |
   13     | 8      |      |      |
-  14     | 36     |      |      |
-  TOTAL  | 362    |      |      |
+  14     | 38     |      |      |
+  TOTAL  | 364    |      |      |
 
   CRITICAL: N | HIGH: N | MED: N | LOW: N | INFO: N
 
@@ -1162,6 +1391,8 @@ STEP 2: SUMMARY TABLE
   - 363: do_clean dotfile fix — find -mindepth 1 (v3.2.5)
   - 364: _log timestamp simplification (v3.2.5)
   - 365: string match -- separator fix in verify_runtime (v3.2.5)
+  - 366: section headers — 12 `# ── ... ──` markers (v3.2.6)
+  - 367: function comment coverage — 81/81 with nearby # comment (v3.2.6)
 
   Verdict: deploy-ready | fix-required | redesign-needed
 
