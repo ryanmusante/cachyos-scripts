@@ -1,15 +1,63 @@
 FISH SHELL SCRIPT AUDIT PROMPT
 ===============================
-Version: 23.0.0
-Derived from: ry-install.fish v3.2.10 audit (2026-03-02)
-Checks: 250
-Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.2.10)
+Version: 26.4.0
+Derived from: ry-install.fish v3.3.4 audit (2026-03-03)
+Checks: 254
+Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.3.4)
+Changes from v26.3.0: 7 updates from v3.3.4 audit fixes.
+  F1: Check 69 — passphrase now rejects '%' (GKeyFile parse safety),
+  matching existing SSID restriction.
+  F2: Check 195 — section header count 19 → 18 (multiline comment
+  collapse in v3.3.3 cleanup merged one header).
+  F3: Checks 199, 213 — in-function set -g count 96 → 97
+  (new WIFI_SSID="" in passphrase % rejection path).
+  F4: Checks 204, 213 — set -l count 671 → 682 (scope shadow
+  lint check added 11 locals in do_lint).
+  F5: Check 206 — SECURITY INVARIANT updated: documents that
+  WIFI_SSID reaches $argv via nmcli, mitigated by validation.
+  F6: Derived-from version bumped to v3.3.4.
+  F7: Phase 14 scope extended to v3.1.0–v3.3.4.
+Changes from v26.2.0: 3 correctness fixes from v26.2 audit of v3.3.2.
+  F1: UDEV data collection regex — escape brace in ATTR{ to ATTR[{]
+  so rg doesn't reject the alternation as an invalid quantifier.
+  F2: Block comment count in check 201 — updated from 6 to 7 to match
+  current script structure (MANAGED FILE DESTINATIONS section added in
+  v3.3.x was not reflected in checklist).
+  F3: Derived-from version bumped to v3.3.3 (v3.3.2 findings fixed).
+Changes from v26.1.0: 8 robustness/correctness fixes.
+  F1: PIPESTATUS subshell uses explicit /bin/bash -c (not implicit
+  subshell inheritance) to guarantee bash-only builtins.
+  F2: Reconcile adaptive context budget arithmetic (freed 400 lines
+  explicitly shift to overhead reserve, 1800 total).
+  F3: Clarify D/E post-wait guard: collection-independent but
+  P13 analysis reads p14.txt for 11 shared patterns.
+  F4: Add PASS 2 runtime checklist count verification (16 checks)
+  alongside static 238-check verify. Total: 238+16=254.
+  F5: Replace fragile "'"$F"'" quoting in all fish -c blocks with
+  $argv[1] + -- "$F" argument passing (16 instances). Prevents
+  breakage on paths containing single quotes.
+  F6: Add check number navigation note between P11 and P13
+  documenting non-sequential numbering across phases.
+  F7: Add EMPTY SECTION GUARD after SIZE GATE to detect silent rg
+  failures producing zero-data sections in collection output.
+  F8: head -1 → head -n 1 in PASS 2 pre-flight (self-consistency
+  with check 141 anti-pattern rule).
+Changes from v26.0.0: reorder checklist phases to 1-11, 13, 14, 15
+  (was 1-11, 14, 15, 13). Clarify v25 check numbers in changelog.
+  Add PCRE2/multiline fallbacks for rg -Un and rg -cP patterns.
+  Add data-file→phase mapping in STEP 2 ANALYZE. SIZE GATE now
+  identifies affected phases. Context budget overflow guideline.
+  Strengthen PIPESTATUS bash-only warning. Fix summary table order.
+Changes from v25: remove --watch, --rollback, --gaming,
+  --profile, --interval (v3.3.2 feature removal). Update all
+  check references, data collection, runtime tests, counts.
+  4 v25 checks removed (v25 #200, #239, #250, #258). Renumbered 254 total.
 
 ───────────────────────────────────────────────────────────────
  PURPOSE
 ───────────────────────────────────────────────────────────────
 
-250-check audit for production fish scripts managing system config,
+254-check audit (238 static + 16 runtime) for production fish scripts managing system config,
 sudo, credentials, embedded configs, and multi-mode dispatch with
 backup/verification subsystems.
 
@@ -19,7 +67,7 @@ paths including error branches, unreachable code, early returns.
 KEY LESSONS (sorted by check number):
   32, 189  SIGPIPE needs dedicated handler; Fish does not auto-ignore
  99, 180   sysctl.d complements vendor config without overlap
- 129, 232  mkdir-only lock (no flock/exec fd since v2.8.2)
+ 129, 240  mkdir-only lock (no flock/exec fd since v2.8.2)
       135  Pre-lock validation: validate → lock → execute
       136  Dispatch args quoted
       143  Fish redirects resolve BEFORE command runs
@@ -36,20 +84,20 @@ KEY LESSONS (sorted by check number):
       188  LC_ALL=C on date-sorted filenames prevents locale bugs
       190  Validate cmdline params against compiled kernel config
       191  Boot sanity gate prevents unbootable system after rebuild
-      192  sysfs direct reads + optional diagnostics behind feature flags
+      192  sysfs direct reads (_gather_temps hwmon)
       193  Dead globals are regression vectors
       197  `command` prefix bypasses function/alias overrides
       198  --argument-names self-documents function signatures
-      200  Rollback needs /boot skip safety and backup selection
-      201  _log START/END markers enable per-mode log analysis
-      203  Post-write sha256 catches silent write corruption
-      208  fish_indent validates canonical formatting beyond syntax
-      211  PROGRESS_STEPS must match _progress calls exactly
-      212  Tmpfile leak tracing: count mktemp vs rm-f per branch
-      215  Numeric test vars must be initialized before comparison
-      221  Dispatch, help, and completions must cover same flag set
-      224  Global state mutations need clear lifecycle contracts
-      250  --profile stderr + NO_COLOR + do_watch isatty 1 color guard
+      200  _log START/END markers enable per-mode log analysis
+      202  Post-write sha256 catches silent write corruption
+ 207–214   set -l inside blocks creates scope shadows; bare set for cross-block
+      208  Dispatch variables (MODE, exit_code) need bare set, not set -g on local
+      215  fish_indent validates canonical formatting beyond syntax
+      218  PROGRESS_STEPS must match _progress calls exactly
+      219  Tmpfile leak tracing: count mktemp vs rm-f per branch
+      222  Numeric test vars must be initialized before comparison
+      228  Dispatch, help, and completions must cover same flag set
+      231  Global state mutations need clear lifecycle contracts
       P3   Static analysis misses execution-order bugs
 
 ───────────────────────────────────────────────────────────────
@@ -80,6 +128,8 @@ STEP 1: COPY + TOOLS
 
 STEP 2: FALLBACKS (bash-only — do not fish-ify)
 
+  Requires /bin/bash (uses arrays, ${@:3}, ${args[-1]}).
+
   ```bash
   command -v rg  >/dev/null 2>&1 || rg()  { grep -P --color=never "$@"; }
   command -v bat >/dev/null 2>&1 || bat() {
@@ -96,10 +146,21 @@ STEP 2: FALLBACKS (bash-only — do not fish-ify)
 
 STEP 3: SAVE CHECKLIST TO DISK
 
-  Save the 232-check static analysis checklist (phases 1-11, 13-15;
-  phase 12's 18 runtime checks are inline in PASS 2) from the
+  Save the 238-check static analysis checklist (phases 1-11, 13-15;
+  phase 12's 16 runtime checks are inline in PASS 2) from the
   CHECKLIST REFERENCE section (at end of this document) to
   /home/claude/audit-data/checklist.txt.
+
+  EXTRACTION METHOD: Use view tool to read this prompt file from the
+  "CHECKLIST REFERENCE" header through end of Phase 15, then write
+  that content to /home/claude/audit-data/checklist.txt via
+  create_file or bash heredoc. Copy verbatim — do not regenerate or
+  paraphrase. Verify: grep -c '^\s*\[ \]' checklist.txt → 238.
+
+  PASS 2 runtime count verification (inline in PASS 2 section):
+    grep -c '^\s*\[ \]' <(sed -n '/^  12\.1/,/^═/p' THIS_PROMPT) → 16.
+    Total: 238 + 16 = 254.
+
   Read phases on demand during analysis:
     bat --plain -r START:END /home/claude/audit-data/checklist.txt
 
@@ -139,8 +200,10 @@ TOOL MANDATES:
                 Use rg -A for non-function context extraction only
                 (e.g., nearby comments, short fixed blocks). NEVER use
                 rg -A for function bodies — same nesting bug as sed -n.
-  PCRE2 GUARD   rg -oP requires PCRE2. If unavailable, fall back to
-                rg -o + grep -oP, or restructure the pattern.
+  PCRE2 GUARD   rg -oP/-cP requires PCRE2. If unavailable, fall back
+                to rg -o + grep -oP, or restructure the pattern.
+                rg -Un (multiline) needs rg ≥11; fall back to awk for
+                adjacent-line patterns if rg multiline unavailable.
   OUTPUT CAPS   Every rg command producing multi-line output MUST pipe
                 through | head -N. Use: head -30 for high-hit patterns
                 (set, sudo, command), head -50 for medium, head -20 for
@@ -152,7 +215,12 @@ CONTEXT BUDGET:
     PASS 1 (gather+analyze):  800 lines tool output max
     PASS 2 (runtime):         600 lines tool output max
     PASS 3 (finalize):        200 lines tool output max
-    Overhead (analysis+findings): 1400 lines reserve
+    Overhead (analysis+findings+reasoning): 1400 lines reserve
+    NOTE: Reasoning competes with this budget. If analysis
+    is complex, reduce data collection caps proportionally.
+    GUIDELINE: If PASS 1 findings exceed 30, cap PASS 2 to
+    400 lines and reduce PASS 1 to 600 lines on retry.
+    Freed 400 lines shift to overhead reserve (1800 total).
 
   RULES:
   - Raw data → disk only. Never paste >100 lines of rg output
@@ -200,7 +268,7 @@ STEP 1: DATA COLLECTION
   # ── GROUP A: P1-5 syntax, routing, errors, vars, security ──
   (
     echo "=== BASHISMS ===" && rg -n '\$\(|export |&&|\|\||set -e |functions -e|unset |local ' "$F" | head -30
-    echo "=== FISH_INDENT ===" && fish_indent --check "$F" 2>&1; echo "exit: $?"
+    echo "=== FISH_INDENT ===" && if command -v fish_indent >/dev/null 2>&1; then fish_indent --check "$F" 2>&1; echo "exit: $?"; else echo "UNAVAILABLE (fish_indent not found — check 216 DEFERRED)"; fi
     echo "=== STRING OPS ===" && rg -n 'string (match|replace|split|join|trim)' "$F" | rg -v -- '--' | head -30
     echo "=== ARGPARSE ===" && rg -n 'argparse|argv' "$F" | head -30
     echo "=== ROUTING ===" && rg -n '>&2|>/dev/null|stderr|stdout' "$F" | head -50
@@ -214,7 +282,7 @@ STEP 1: DATA COLLECTION
     echo "=== INJECTION ===" && rg -n 'eval|source ' "$F" | head -20
     echo "=== CHK_GREP IMPL ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function _chk_grep " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -222,31 +290,29 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' | rg 'grep' | head -10
+      end' -- "$F" | rg 'grep' | head -10
     echo "=== CREDS ===" && rg -ni 'password|passphrase|credential|secret|WIFI_PASS' "$F" | head -20
     echo "=== PERMS ===" && rg -n 'chmod|chown|0600|0644|0700|0755' "$F" | head -30
     echo "=== SUDO ===" && rg -n 'sudo |_IS_ROOT' "$F" | head -30
     echo "=== EXT CMDS ===" && rg -n 'command -q|command -v' "$F" | head -30
     echo "=== NUMERIC VAR INIT ===" && fish -c '
-      for v in errors pad total_err line_count ret idx_a idx_b perm_bad perm_checked bad_perms fixed_count read_ok verify_status
-        set -l init (rg -c "set -l $v " "'"$F"'" 2>/dev/null; or echo 0)
-        set -l used (rg -c "test \\\$$v " "'"$F"'" 2>/dev/null; or echo 0)
+      for v in errors total_err line_count ret idx_a perm_checked dir_checked verify_status failed issues code _ps _regdom_ps total steps_count shader_size reload_wait wifi_retry next_i
+        set -l init (rg -c "set -l $v " $argv[1] 2>/dev/null; or echo 0)
+        set -l used (rg -c "test \\\$$v " $argv[1] 2>/dev/null; or echo 0)
         echo "$v: init=$init test=$used"
       end
-    ' 2>&1 || echo "FISH_ERROR: NUMERIC_VAR_INIT exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: NUMERIC_VAR_INIT exit=$?"
   ) > "$D/p1-5.txt" 2>&1; echo "GROUP_A_EXIT=$?" >> "$D/p1-5.txt" &
 
   # ── GROUP B: P6-7 embedded configs, cross-refs ──
   (
     echo "=== CONFIG FORMATS ===" && rg -n '\[Unit\]|\[Service\]|\[Install\]' "$F" | head -20
     echo "=== SYSTEMD ===" && rg -n 'ExecStart|After=|Type=' "$F" | head -20
-    echo "=== UDEV ===" && rg -n 'ACTION==|SUBSYSTEM==|ATTR{' "$F" | head -20
+    echo "=== UDEV ===" && rg -n 'ACTION==|SUBSYSTEM==|ATTR[{]' "$F" | head -20
     echo "=== DESTINATIONS ===" && rg -n 'SERVICE_DESTINATIONS|amdgpu-performance|cpupower-epp' "$F" | head -20
     echo "=== SDBOOT ===" && rg -n 'LINUX_FALLBACK_OPTIONS|SDBOOT' "$F" | head -20
     echo "=== VERSION ===" && rg -n 'VERSION|SYSTEM_DEST|USER_DEST|SERVICE_DEST|get_file_content|MASK' "$F" | head -30
     echo "=== DISPATCH ===" && rg -n 'do_\w+ \$|do_\w+ "\$' "$F" | rg -v 'function |#|_log' | head -20
-    echo "=== WATCH ===" && rg -n 'WATCH_INTERVAL|do_watch|--watch' "$F" | head -20
-    echo "=== PROFILE ===" && rg -n 'PROFILE|profile' "$F" | head -20
     echo "=== SYSCTL ===" && rg -n 'sysctl|BBR|tcp_fastopen|default_qdisc|inotify' "$F" | head -30
   ) > "$D/p6-7.txt" 2>&1; echo "GROUP_B_EXIT=$?" >> "$D/p6-7.txt" &
 
@@ -255,7 +321,7 @@ STEP 1: DATA COLLECTION
     echo "=== FUNCTIONS ===" && rg -n '^function |^end$' "$F" | head -50
     echo "=== FUNC LENGTHS ===" && fish -c '
       set -l fname ""; set -l fstart 0; set -l depth 0; set -l lineno 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         set lineno (math $lineno + 1)
         if string match -qr "^function [a-z_]" -- $line
           if test $depth -eq 0 -a -n "$fname"
@@ -278,22 +344,22 @@ STEP 1: DATA COLLECTION
         set -l len (math $lineno - $fstart)
         test $len -gt 50; and printf "%-40s L%-5d %d lines\n" $fname $fstart $len
       end
-    ' 2>&1 || echo "FISH_ERROR: FUNC_LENGTHS exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: FUNC_LENGTHS exit=$?"
     echo "=== ARITY ===" && rg -n 'count \$argv|test .* -ne |test .* -lt ' "$F" | head -20
     echo "=== ATOMIC ===" && rg -n 'mv |install_file|chmod.*mv' "$F" | head -30
-    echo "=== CHMOD MV ORDER ===" && rg -Un 'chmod.*\nmv |chmod.*\nsudo mv' "$F" | head -10
+    echo "=== CHMOD MV ORDER ===" && { rg -Un 'chmod.*\nmv |chmod.*\nsudo mv' "$F" 2>/dev/null || awk '/chmod/{p=$0;next} p && /^ *(sudo )?mv /{print p"\n"$0;p=""} {p=""}' "$F"; } | head -10
     echo "=== LOCK ===" && rg -n 'mkdir.*lock|rmdir.*lock|kill -0|LOCK|flock|exec 9' "$F" | head -30
     echo "=== LOG ===" && rg -n '_log|_json_str|NDJSON|log_file|\.jsonl' "$F" | head -30
     echo "=== BACKUP ===" && rg -n '_backup_|BACKUP_BASE|BACKUP_DIR|MAX_BACKUPS' "$F" | head -20
     echo "=== ARGPARSE TMP ===" && rg -n 'ry-argparse|_argparse_tmp' "$F" | head -10
     echo "=== ANTIPATTERNS ===" && rg -n 'cat .* \| |test .* = ""|head -1\b|tail -1\b' "$F" | head -20
     echo "=== REDIRECT BUG ===" && rg -n 'string trim.*<|string match.*<' "$F" | rg -v '#' | head -10
-    echo "=== MAGIC NUMS ===" && rg -n 'TEMP_|DISK_|BOOT_|MAX_|CACHE_|ROOT_AVAIL|NVME_LIFE|WATCH_INTERVAL' "$F" | head -30
+    echo "=== MAGIC NUMS ===" && rg -n 'TEMP_|DISK_|BOOT_|MAX_|CACHE_|ROOT_AVAIL|NVME_LIFE' "$F" | head -30
     echo "=== DRY ===" && rg -n 'DRY|dry.run|--dry-run|\[DRY\]' "$F" | head -20
     echo "=== TEST_ALL ===" && rg -n 'do_test_all|verify.static|verify.runtime' "$F" | head -20
     echo "=== TEST_ALL BODY ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function do_test_all " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -301,10 +367,10 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' | head -50
+      end' -- "$F" | head -50
     echo "=== TEST_ALL TMPFILES ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function do_test_all " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -312,15 +378,14 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' | rg 'mktemp|rm -f' | head -10
+      end' -- "$F" | rg 'mktemp|rm -f' | head -10
     echo "=== ISATTY ===" && rg -n 'isatty|test -t' "$F" | head -20
-    echo "=== ROLLBACK ===" && rg -n 'rollback|undo|revert|restore|_backup' "$F" | head -30
     echo "=== PRE-LOCK ===" && rg -n 'case install-file|case install|_acquire_lock' "$F" | head -20
     echo "=== PROGRESS DEFINED ===" && { rg 'PROGRESS_STEPS' "$F" | rg -oP '(?<=")[^"]+(?=")' 2>/dev/null || rg 'PROGRESS_STEPS' "$F" | rg -o '"[^"]*"' | tr -d '"'; } | sort | head -30
-    echo "=== PROGRESS CALLED ===" && { rg '_progress "' "$F" | rg -v '#|function' | rg -oP '(?<=_progress ")[^"]+' 2>/dev/null || rg '_progress "' "$F" | rg -v '#|function' | rg -o '"[^"]*"' | tr -d '"'; } | sort | head -30
+    echo "=== PROGRESS CALLED ===" && { rg '_progress "' "$F" | rg -v '#|function' | rg -oP '(?<=_progress ")[^"]+' 2>/dev/null || rg '_progress "' "$F" | rg -v '#|function' | sed 's/.*_progress "//' | sed 's/".*//'; } | sort | head -30
     echo "=== COMPLETIONS FLAGS ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function do_completions " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -328,18 +393,18 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' | rg -o '\-l [a-z][-a-z]*' | sort -u | head -30
+      end' -- "$F" | rg -o '\-l [a-z][-a-z]*' | sort -u | head -30
     echo "=== DISPATCH CASES ===" && fish -c '
       set -l past 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         test $past -eq 0; and string match -qr "Main dispatch" -- $line; and set past 1; and continue
         test $past -eq 1; or continue
         string match -qr "^\\s*case [a-z]" -- $line; and echo $line
         string match -qr "^end$" -- $line; and break
-      end' | head -30
+      end' -- "$F" | head -30
     echo "=== HELP FLAGS ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function show_help " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -347,15 +412,15 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' | rg -o '\-\-[a-z][-a-z]+' | sort -u | head -30
-    echo "=== UNREACHABLE ===" && rg -Un '(return [0-9]+|exit [0-9]+)\n\s+[a-z_]' "$F" | rg -v 'end$|else|#|function' | head -10
+      end' -- "$F" | rg -o '\-\-[a-z][-a-z]+' | sort -u | head -30
+    echo "=== UNREACHABLE ===" && { rg -Un '(return [0-9]+|exit [0-9]+)\n\s+[a-z_]' "$F" 2>/dev/null || awk '/^[[:space:]]*(return|exit) [0-9]+/{p=NR":"$0;next} p && /^[[:space:]]+[a-z_]/{print p"\n"NR":"$0;p=""} {p=""}' "$F"; } | rg -v 'end$|else|#|function' | head -10
     echo "=== OR RETURN ===" && rg -n 'or return [^0]' "$F" | head -10
     echo "=== DEST CROSSREF ===" && rg -o '"/(boot|etc)[^"]*"' "$F" 2>/dev/null | tr -d '"' | sort | head -30
     echo "=== PRINTF INJECTION ===" && rg -n "printf '.*\\\$" "$F" | rg -v '%s|#|%%' | head -10
     echo "=== UNQUOTED TEST ===" && rg -n 'test \$[a-z]' "$F" | rg -v '"' | head -20
   ) > "$D/p8-11.txt" 2>&1; echo "GROUP_C_EXIT=$?" >> "$D/p8-11.txt" &
 
-  # ── GROUP D: P14 v3.1.0–v3.2.10 specifics ──
+  # ── GROUP D: P14 v3.1.0–v3.3.4 specifics ──
   (
     echo "=== KVER GLOBALS ===" && rg -n 'KVER|KVER_MAJOR|KVER_MINOR' "$F" | head -20
     echo "=== _ntsync_state ===" && rg -n '_ntsync_state' "$F" | head -10
@@ -391,7 +456,6 @@ STEP 1: DATA COLLECTION
     echo "=== VALIDATE KERNEL PARAMS ===" && rg -n '_validate_kernel_params|param_config_map|/proc/config.gz' "$F" | head -10
     echo "=== BOOT SANITY ===" && rg -n '_preflight_boot_sanity|vmlinuz|initramfs.*non.zero' "$F" | head -10
     echo "=== GATHER TEMPS ===" && rg -n '_gather_temps|lm_sensors' "$F" | head -10
-    echo "=== GAMING FLAG ===" && rg -n 'GAMING|--gaming|_diagnose_gaming' "$F" | head -10
     echo "=== DEAD GLOBALS ===" && rg -n 'MODULES_LOAD|_LOCK_METHOD' "$F" | head -5
     echo "=== DOTFILE CLEAN ===" && rg -n 'mindepth 1.*exec|find.*mindepth.*rm' "$F" | head -10
     echo "=== LOG TIMESTAMP ===" && rg -n '_TS_CACHE|/proc/uptime' "$F" | head -10
@@ -400,25 +464,25 @@ STEP 1: DATA COLLECTION
     echo "=== SECTION HEADER LINES ===" && rg -n '^# ── ' "$F" | head -25
     echo "=== FUNCTION COMMENT COVERAGE ===" && fish -c '
       set -l n 0; set -l cmt 0; set -l lineno 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         set lineno (math $lineno + 1)
         string match -qr "^#" -- $line; and set cmt $lineno
         if string match -qr "^function " -- $line
           test (math $lineno - $cmt) -le 2; and set n (math $n + 1)
         end
       end
-      echo "$n/83 functions with nearby comment"
-    ' 2>&1 || echo "FISH_ERROR: FUNC_COMMENT_COVERAGE exit=$?"
+      echo "$n/80 functions with nearby comment"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: FUNC_COMMENT_COVERAGE exit=$?"
     echo "=== COMMAND PREFIX ===" && fish -c '
       for cmd in rm mv cp chmod chown mkdir
-        set -l c (rg -c "command $cmd" "'"$F"'" 2>/dev/null; or echo 0)
+        set -l c (rg -c "command $cmd" $argv[1] 2>/dev/null; or echo 0)
         echo "$cmd: $c"
       end
-    ' 2>&1 || echo "FISH_ERROR: COMMAND_PREFIX exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: COMMAND_PREFIX exit=$?"
     echo "=== ARGUMENT NAMES ===" && rg -n -- '--argument-names' "$F" | head -20
     echo "=== IN-FUNCTION GLOBALS ===" && fish -c '
       set -l fn ""; set -l c 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if string match -qr "^function " -- $line
           set fn (string match -r "^function (\w+)" -- $line)[2]
         else if string match -qr "^end$" -- $line
@@ -428,24 +492,33 @@ STEP 1: DATA COLLECTION
         end
       end
       echo "$c in-function set -g"
-    ' 2>&1 || echo "FISH_ERROR: IN_FUNCTION_GLOBALS exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: IN_FUNCTION_GLOBALS exit=$?"
     echo "=== SHA256 VERIFY ===" && rg -n 'sha256sum' "$F" | head -10
     echo "=== WIFI CRED SCOPE ===" && rg -n 'WIFI_SSID|WIFI_PASS|wifi_pass|wifi_ssid' "$F" | head -20
     echo "=== LOG ROTATION MODE ===" && rg -n 'MAX_LOGS' "$F" | head -10
     echo "=== LOG SECTION MARKERS ===" && rg -n '=== .* START ===|=== .* END ===' "$F" | head -20
-    echo "=== ROLLBACK MODE ===" && rg -n 'do_rollback|--rollback|ROLLBACK' "$F" | head -20
     echo "=== BLOCK COMMENTS ===" && rg -nc '^# ── .*──$' "$F"
-    echo "=== STDOUT LEAKS ===" && rg -n 'printf.*\\n|echo$' "$F" | rg -v '>&2|_log|_msg|_ok|_fail|_warn|_err|_info|_dry|_echo|/dev/null|#|get_file_content|show_help|_ntsync_state|_verify_summary|do_watch|stdout_tmp' | head -20
+    echo "=== STDOUT LEAKS ===" && rg -n 'printf.*\\n|echo$' "$F" | rg -v '>&2|_log|_msg|_ok|_fail|_warn|_err|_info|_dry|_echo|/dev/null|#|get_file_content|show_help|_ntsync_state|_verify_summary|stdout_tmp' | head -20
     echo "=== RUN SECURITY ===" && rg -n 'SECURITY INVARIANT' "$F" | head -5
+    echo "=== BARE SET COUNT ===" && rg -c '^\s+set [a-z_]' "$F"
+    echo "=== SET -L COUNT ===" && rg -c 'set -l ' "$F"
+    echo "=== MODE DISPATCH ===" && rg -n 'set.*MODE ' "$F" | rg -v '#|set -l MODE|argparse' | head -20
+    echo "=== EXIT_CODE DISPATCH ===" && rg -n 'set.*exit_code ' "$F" | rg -v '#|set -l exit_code' | head -20
+    echo "=== HAS_LOCK DISPATCH ===" && rg -n 'set.*_has_lock ' "$F" | head -10
+    echo "=== MODE_LABEL DISPATCH ===" && rg -n 'set.*mode_label ' "$F" | head -10
+    echo "=== SCOPE SHADOW CANDIDATES ===" && rg -c '^\s+set -l ' "$F"
   ) > "$D/p14.txt" 2>&1; echo "GROUP_D_EXIT=$?" >> "$D/p14.txt" &
 
   # ── GROUP E: P13 gap analysis (race/error/edge tracing) ──
+  # DEPENDS ON GROUP D at analysis time (not collection time):
   # 11 shared patterns (FOOTER_RACE, ROTATION_LOCK, LC_ALL, SIGPIPE,
-  # BOOT_SANITY, etc.) collected in GROUP D; analyze from p14.txt.
+  # BOOT_SANITY, etc.) are collected in GROUP D's p14.txt.
+  # GROUP E collects independent data to p13.txt; both files are
+  # cross-referenced during STEP 2 ANALYZE.
   (
     echo "=== TMPFILE LIFECYCLE ===" && fish -c '
       set -l fname ""; set -l depth 0; set -l body
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $depth -eq 0
           if string match -qr "^function (\\w+) " -- $line
             set fname (string match -r "^function (\\w+)" -- $line)[2]
@@ -467,14 +540,14 @@ STEP 1: DATA COLLECTION
           set -a body $line
         end
       end
-    ' 2>&1 || echo "FISH_ERROR: TMPFILE_LIFECYCLE exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: TMPFILE_LIFECYCLE exit=$?"
     echo "=== DRY GATE ===" && rg -n 'sudo |pacman |systemctl |mv |tee ' "$F" | rg -v 'DRY|_run|#|echo|rg|string' | head -30
     echo "=== LOCK REGRESSION ===" && rg -n 'flock|exec 9|_LOCK_METHOD.*flock' "$F" | head -5
     echo "=== LOCK TRACE ===" && rg -n 'mkdir.*LOCK|rmdir.*LOCK|verify_pid' "$F" | head -20
     echo "=== SORT LOCALE ===" && rg -n 'sort' "$F" | rg -v '#|sort -|LC_ALL' | head -20
     echo "=== SIGPIPE BODY ===" && fish -c '
       set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
+      for line in (cat -- $argv[1])
         if test $cap -eq 0
           string match -qr "^function _cleanup_pipe " -- $line; and set cap 1; and set d 1; and continue
         else
@@ -482,24 +555,13 @@ STEP 1: DATA COLLECTION
           if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
           echo $line
         end
-      end' 2>&1 | head -20 || echo "FISH_ERROR: SIGPIPE_BODY exit=$?"
+      end' -- "$F" 2>&1 | head -20 || echo "FISH_ERROR: SIGPIPE_BODY exit=$?"
     echo "=== DOTFILE GLOB ===" && rg -n 'rm -rf.*\*' "$F" | rg -v '#' | head -5
-    echo "=== ROLLBACK BOOT SKIP ===" && fish -c '
-      set -l d 0; set -l cap 0
-      for line in (cat -- "'"$F"'")
-        if test $cap -eq 0
-          string match -qr "^function do_rollback " -- $line; and set cap 1; and set d 1; and continue
-        else
-          string match -qr "^\\s*function " -- $line; and set d (math $d+1)
-          if string match -qr "^end$" -- $line; set d (math $d-1); test $d -eq 0; and break; end
-          echo $line
-        end
-      end' 2>&1 | rg '/boot' | head -10 || echo "FISH_ERROR: ROLLBACK_BODY exit=$?"
     echo "=== BARE COREUTILS ===" && fish -c '
       for cmd in rm mv cp chmod chown mkdir
-        rg -n "\b$cmd " "'"$F"'" | rg -v "command $cmd|sudo $cmd|#|echo|string|_run|_log|printf|set.*$cmd|\".*$cmd" | head -5
+        rg -n "\b$cmd " $argv[1] | rg -v "command $cmd|sudo $cmd|#|echo|string|_run|_log|printf|set.*$cmd|\".*$cmd" | head -5
       end
-    ' 2>&1 || echo "FISH_ERROR: BARE_COREUTILS exit=$?"
+    ' -- "$F" 2>&1 || echo "FISH_ERROR: BARE_COREUTILS exit=$?"
     echo "=== RUN QUOTING ===" && rg -n '_run ' "$F" | rg -v '#|function |_log' | rg '\$[A-Z]' | rg -v '"' | head -10
     echo "=== HARDCODED PATHS ===" && rg -n '/home/|/root/' "$F" | rg -v '#|\$HOME|HOME|getent' | head -10
     echo "=== LOG BACKUP PATHS ===" && rg -n 'set -g.*ry-install' "$F" | head -10
@@ -509,20 +571,50 @@ STEP 1: DATA COLLECTION
 
   wait
 
-  # ── GROUP D→E dependency guard ──
+  # ── Post-wait data guard (D and E collect independently; E's ──
+  # ── P13 analysis reads p14.txt for 11 shared patterns)       ──
   if [ ! -s "$D/p14.txt" ]; then
-    echo "[INFO] GROUP D (p14.txt) empty or missing — P13 shared-pattern analysis will be incomplete" >> "$O"
+    echo "[INFO] p14.txt empty or missing — P14 v3.1.0-v3.3.4 checks will be incomplete" >> "$O"
+  fi
+  if [ ! -s "$D/p13.txt" ]; then
+    echo "[INFO] p13.txt empty or missing — P13 gap analysis checks will be incomplete" >> "$O"
   fi
 
   # ── SIZE GATE: truncate any file over 300 lines ──
   for f in "$D"/*.txt; do
     lines=$(wc -l < "$f")
     if [ "$lines" -gt 300 ]; then
+      fname=$(basename "$f" .txt)
+      # Map data files to phases for diagnostics
+      case "$fname" in
+        p1-5)  phases="P1-P5 (syntax,routing,errors,vars,security)" ;;
+        p6-7)  phases="P6-P7 (configs,cross-refs)" ;;
+        p8-11) phases="P8-P11 (architecture,patterns,docs,testing)" ;;
+        p13)   phases="P13 (gap analysis)" ;;
+        p14)   phases="P14 (v3.1.0-v3.3.4 specifics)" ;;
+        *)     phases="unknown ($fname)" ;;
+      esac
       echo "WARNING: $f has $lines lines, truncating to 300" >&2
-      echo "[INFO] SIZE GATE: $f truncated from $lines to 300 lines — some checks may have incomplete data" >> "$O"
+      echo "[INFO] SIZE GATE: $f ($phases) truncated from $lines to 300 lines — affected phase checks may have incomplete data" >> "$O"
       head -300 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
     fi
   done
+
+  # ── EMPTY SECTION GUARD: detect sections with 0 data lines ──
+  for f in "$D"/*.txt; do
+    while IFS= read -r header; do
+      section=$(echo "$header" | sed 's/^=== //;s/ ===$//')
+      # Get line count between this header and the next (or EOF)
+      linenum=$(grep -nF "$header" "$f" | head -n 1 | cut -d: -f1)
+      nextnum=$(awk -v start="$linenum" 'NR>start && /^=== .* ===$/{print NR; exit}' "$f")
+      : "${nextnum:=$(wc -l < "$f")}"
+      content_lines=$((nextnum - linenum - 1))
+      if [ "$content_lines" -le 0 ]; then
+        echo "[INFO] EMPTY SECTION: $section in $(basename "$f") — rg may have failed silently" >> "$O"
+      fi
+    done < <(grep '^=== .* ===$' "$f")
+  done
+
   echo "=== DATA COLLECTION COMPLETE ==="
   wc -l "$D"/*.txt
   ```
@@ -532,8 +624,20 @@ STEP 2: ANALYZE ON DISK
   Read checklist from /home/claude/audit-data/checklist.txt (saved in
   SETUP STEP 3). Read gathered data from $D/*.txt files on disk using
   bat --plain. For each phase, compare gathered data against checklist.
-  Write findings to /home/claude/audit-findings.txt. If p14.txt is
-  missing or truncated, mark P13 checks as DEFERRED.
+  Write findings to /home/claude/audit-findings.txt.
+
+  DATA FILE → PHASE MAPPING:
+    p1-5.txt  → Phases 1-5 (syntax, routing, errors, vars, security)
+    p6-7.txt  → Phases 6-7 (configs, cross-refs)
+    p8-11.txt → Phases 8-11 (architecture, patterns, docs, testing)
+    p13.txt   → Phase 13 (gap analysis — also reads p14.txt for
+                FOOTER_RACE, ROTATION_LOCK, LC_ALL, SIGPIPE,
+                BOOT_SANITY shared patterns)
+    p14.txt   → Phases 14-15 (version specifics, deep checks)
+
+  If p14.txt is missing or truncated, mark shared-pattern P13
+  checks (234-238) as DEFERRED. If p13.txt is missing, mark P13
+  as DEFERRED independently.
 
   Report to context ONLY:
     "PASS 1 complete. N findings (N CRIT, N HIGH, N MED, N LOW, N INFO).
@@ -675,7 +779,8 @@ STEP 2: ANALYZE ON DISK
        [ ] 68. Restricted sudo handled
 
   5.6  INPUT VALIDATION
-       [ ] 69. Interface names, SSIDs (1-32, no metachar), passphrases (8-63)
+       [ ] 69. Interface names, SSIDs (1-32, no metachar/%),
+               passphrases (8-63, no %/newline)
        [ ] 70. Country codes, paths (canonical, no traversal), numeric ranges
 
 ─── Phase 6: Embedded Config Content (30 checks) ─────────────
@@ -764,7 +869,7 @@ STEP 2: ANALYZE ON DISK
        [ ] 111. Sub-options + modifiers documented as separate entries
        [ ] 112. --logs sub-targets + --install-file documented
        [ ] 113. Exit codes (0,1,2,130,141) in both --help and README
-       [ ] 114. Prerequisites listed; mode cross-refs (--watch, --no-log, --profile)
+       [ ] 114. Prerequisites listed; mode cross-refs (--no-log)
 
 ─── Phase 8: Function Architecture (22 checks) ───────────────
 
@@ -834,7 +939,7 @@ STEP 2: ANALYZE ON DISK
        [ ] 149. TEMP_CPU_WARN/CRIT, TEMP_GPU_WARN/CRIT
        [ ] 150. DISK_ROOT_WARN/CRIT, BOOT_SPACE_WARN/CRIT
        [ ] 151. ROOT_AVAIL, NVME_LIFE, MAX_LOGS, MAX_BACKUPS, CACHE_CLEAN
-       [ ] 152. BOOT_TIME_WARN/TARGET, WATCH_INTERVAL default
+       [ ] 152. BOOT_TIME_WARN/TARGET
 
   10.2 DOCUMENTATION
        [ ] 153. --help covers all modes/flags
@@ -868,7 +973,31 @@ STEP 2: ANALYZE ON DISK
        [ ] 169. Backup before overwrite
        [ ] 170. Recovery documented
 
-─── Phase 14: v3.1.0–v3.2.10 Specifics (37 checks) ──────────
+  NOTE: Check numbers are non-sequential across phases. Phase order
+  follows execution priority (P13 gap analysis before P14 specifics).
+  Check ranges: P1-11 → #1-170, P13 → #234-238, P14 → #171-214,
+  P15 → #215-233, P12 → #239-254.
+
+─── Phase 13: Gap Analysis (5 checks) ────────────────────────
+
+  13.1 RACE CONDITIONS
+       [ ] 234. mktemp O_EXCL, no check-use gap, no attacker substitution
+
+  13.2 ERROR PATH COMPLETENESS
+       [ ] 235. Every tmpfile cleaned on EVERY error branch;
+               credentials erased on every error path
+       [ ] 236. Signal cleanup covers all tmpfile patterns (incl ry-argparse.*)
+
+  13.3 LOGIC
+       [ ] 237. DRY gates: every state-changing call through _run or DRY check
+
+  13.4 EDGE CASES
+
+  13.5 LOCK REGRESSION (v2.8.2)
+       [ ] 238. mkdir-only, 0 flock, stale reclaim with --, verify_pid present
+
+
+─── Phase 14: v3.1.0–v3.3.4 Specifics (44 checks) ──────────
 
   14.1 KVER GLOBALS (v3.1.0)
        [ ] 171. KVER, KVER_MAJOR, KVER_MINOR initialized at top level
@@ -908,8 +1037,8 @@ STEP 2: ANALYZE ON DISK
   14.6 AUDIT FIXES (v3.1.1–v3.2.10)
        [ ] 183. _install_finalize returns 1 when INSTALL_HAD_ERRORS=true.
        [ ] 184. cat -- terminators in _run capture paths.
-       [ ] 185. --description + comment coverage: function count = 83 =
-               description count. 19 section headers + 6 block comments.
+       [ ] 185. --description + comment coverage: function count = 80 =
+               description count. 18 section headers + 7 block comments.
 
   14.7 ORPHAN LOG + RACE FIXES (v3.2.2–v3.2.3)
        [ ] 186. Orphan log cleanup: every exit 2 preceded by LOG_FILE guard.
@@ -931,128 +1060,133 @@ STEP 2: ANALYZE ON DISK
 
   14.9 FEATURE EXTRACTION (v3.2.5)
        [ ] 192. _gather_temps: sysfs hwmon direct reads, no lm_sensors fork.
-               _diagnose_gaming: behind --gaming flag, --no-scope-shadowing.
-               --gaming without --diagnose → WARN. --all auto-enables.
        [ ] 193. Dead globals removed: MODULES_LOAD, _LOCK_METHOD → 0 hits.
                do_clean: find -mindepth 1 (not glob). _log: direct date.
        [ ] 194. String match -- separator: outside quoted string as Fish
                end-of-options marker in verify_runtime cmdline check.
 
   14.10 CODE QUALITY (v3.2.6–v3.2.10)
-       [ ] 195. Section headers: 19 `# ── Description ──` markers.
-       [ ] 196. Function comment coverage: 83/83 with nearby # comment.
-       [ ] 197. `command` prefix on 83 coreutils calls. No bare coreutils
+       [ ] 195. Section headers: 18 `# ── Description ──` markers.
+       [ ] 196. Function comment coverage: 80/80 with nearby # comment.
+       [ ] 197. `command` prefix on 79 coreutils calls. No bare coreutils
                outside sudo context.
-       [ ] 198. --argument-names on 18 functions.
+       [ ] 198. --argument-names on 19 functions.
 
   14.11 SCOPING + ROLLBACK (v3.2.9–v3.2.10)
-       [ ] 199. In-function set -g: 125→101. 24 verify_* vars use bare set.
-               Remaining 101 intentional: VERIFY_* counters, flags.
-       [ ] 200. --rollback: do_rollback restores from backups. Lists
-               newest-first, --force skips prompt, skips /boot files.
-               Dry-run + error handling + lock. Dispatch/help/completions/
-               do_test_all all include --rollback.
+       [ ] 199. In-function set -g: 97 (all intentional VERIFY_*/flag globals).
 
   14.12 LOGGING + VERIFICATION (v3.2.8–v3.2.10)
-       [ ] 201. _log START/END markers on 9 modes. rg START → 9, END → 10.
-       [ ] 202. 6 block comments: signal/cleanup, NDJSON, _run, config
-               validation, atomic install, argument parser.
-       [ ] 203. Post-write sha256: install_file verifies destination hash
+       [ ] 200. _log START/END markers on 8 modes. rg START → 8, END → 9.
+       [ ] 201. 7 block comments: managed destinations, logging/counters,
+               file operations, runtime verification, lint/clean,
+               install pipeline, CLI argument parsing.
+       [ ] 202. Post-write sha256: install_file verifies destination hash
                after atomic mv. Failure → INSTALL_HAD_ERRORS.
-       [ ] 204. WiFi credentials: set before use, erased after iwd config.
+       [ ] 203. WiFi credentials: set before use, erased after iwd config.
                Not stored as globals beyond pipeline.
-       [ ] 205. Unconditional log rotation for all modes. 402 vars have
-               explicit set -l. _run wraps 10 sudo write ops for logging.
+       [ ] 204. Unconditional log rotation for all modes. 682 vars have
+               explicit set -l. 287 bare set for cross-block vars.
+               _run wraps 10 sudo write ops for logging.
 
   14.13 STDOUT + SECURITY (v3.2.10)
-       [ ] 206. All UI output → stderr. Intentional stdout: return-value
-               functions, get_file_content, show_help, do_watch.
-       [ ] 207. SECURITY INVARIANT at _run: no user-controlled input
-               reaches command execution. All _run callers pass hardcoded
-               commands with at most DESTINATIONS file paths.
+       [ ] 205. All UI output → stderr. Intentional stdout: return-value
+               functions, get_file_content, show_help.
+       [ ] 206. SECURITY INVARIANT at _run: WIFI_SSID is read-validated
+               (no metacharacters) before reaching $argv via nmcli.
+               All other _run callers pass hardcoded commands with at
+               most DESTINATIONS file paths.
+
+  14.14 DISPATCH + EXIT CODE FIXES (v3.2.11–v3.2.13)
+       [ ] 207. MODE variable: bare set (not set -g on locally-declared).
+               Dispatch routes to correct mode handler. 0 set -g MODE
+               inside functions. Regression: all modes ran install path.
+       [ ] 208. exit_code variable: bare set (not set -g on locally-declared).
+               All 14 mode exit paths propagate correctly. NDJSON footer
+               exit_code accurate. Regression: every mode exited 0.
+       [ ] 209. _has_lock variable: bare set. Lock released on exit for
+               write modes. Regression: lock never released, blocked
+               subsequent runs until stale lock cleared.
+       [ ] 210. mode_label variable: bare set. Log filenames include
+               modifier suffixes (-dry, -fix, -all, sub-target).
+
+  14.15 SCOPE REMEDIATION (v3.3.0–v3.3.2)
+       [ ] 211. 143 set -l → bare set across 41 functions (124 in v3.3.0 +
+               19 in v3.3.2). 0 read-after-block scope shadows. Pattern:
+               set -l inside for/while/if/else creates block-scoped
+               shadow invisible to outer scope.
+       [ ] 212. Cross-block vars use bare set: do_diff (has_diff, has_pacnew,
+               this_diff), do_diagnose (17 counters), do_lint (has_errors),
+               verify_runtime (perms), validate_configs (errors),
+               _analyze_log (10 vars), _check_hardware_fingerprint (8 vars),
+               _progress (bar/desc), _preflight_boot_sanity (errors),
+               do_test_all (total/passed).
+       [ ] 213. In-function set -g count: 97 (all intentional VERIFY_*/flag
+               globals). Bare set count: 287 (cross-block updaters).
+               set -l count: 682. Grand total scope fixes: 183.
+       [ ] 214. _analyze_log total_step_s: bare set (not set -g on local).
+               Step timing total correctly computed. (F-14, v3.3.1)
 
 ─── Phase 15: Supplemental Deep Checks (19 checks) ───────────
 
   15.1 FORMATTING
-       [ ] 208. fish_indent --check passes exit 0. Canonical indentation.
+       [ ] 215. fish_indent --check passes exit 0. Canonical indentation.
 
   15.2 FUNCTION LENGTH ANALYSIS
-       [ ] 209. Functions >50 lines: enumerate all. Acceptable for complex
+       [ ] 216. Functions >50 lines: enumerate all. Acceptable for complex
                modes in 7000+ line script.
-       [ ] 210. Functions >100 lines: must be self-contained mode handlers.
+       [ ] 217. Functions >100 lines: must be self-contained mode handlers.
 
   15.3 PROGRESS BAR SYNC
-       [ ] 211. PROGRESS_STEPS array matches _progress call arguments.
+       [ ] 218. PROGRESS_STEPS array matches _progress call arguments.
 
   15.4 TMPFILE LEAK TRACING
-       [ ] 212. Every function with mktemp: count mktemp vs rm-f per
+       [ ] 219. Every function with mktemp: count mktemp vs rm-f per
                branch. Key: validate_configs (7/8), install_file (5/11).
 
   15.5 ATOMIC FILE OPERATIONS
-       [ ] 213. install_file: chmod BEFORE mv. Symlink TOCTOU guard.
+       [ ] 220. install_file: chmod BEFORE mv. Symlink TOCTOU guard.
 
   15.6 INJECTION SAFETY
-       [ ] 214. _chk_grep: grep -qF --. printf: %s for user values.
+       [ ] 221. _chk_grep: grep -qF --. printf: %s for user values.
                Subshell: only safe builtins in test command substitutions.
 
   15.7 VARIABLE INITIALIZATION
-       [ ] 215. Every numeric var in test has prior set -l with numeric
-               value. Init count ≥ test count for all 13 vars.
-       [ ] 216. Word splitting N/A in fish. Unquoted $var in test is safe.
+       [ ] 222. Every numeric var in test has prior set -l with numeric
+               value. Init count ≥ test count for all 19 vars.
+       [ ] 223. Word splitting N/A in fish. Unquoted $var in test is safe.
 
   15.8 PATH SAFETY
-       [ ] 217. LOG_DIR + BACKUP_BASE use $HOME. No hardcoded /home/ or
+       [ ] 224. LOG_DIR + BACKUP_BASE use $HOME. No hardcoded /home/ or
                /root/. XDG_RUNTIME_DIR: SSH sock with set -q + test -S.
 
   15.9 PROCESS LIFECYCLE
-       [ ] 218. Sudo keepalive: &, PID captured, disown'd, killed in
+       [ ] 225. Sudo keepalive: &, PID captured, disown'd, killed in
                _do_cleanup, set --erase'd. kill -0 after spawn.
-       [ ] 219. _run quoting: 0 unquoted $VAR in _run arguments.
+       [ ] 226. _run quoting: 0 unquoted $VAR in _run arguments.
 
   15.10 FLAG COVERAGE SYNC
-       [ ] 220. Completions include complete -c for every CLI flag.
-       [ ] 221. Dispatch, show_help, and do_completions cover same flag
+       [ ] 227. Completions include complete -c for every CLI flag.
+       [ ] 228. Dispatch, show_help, and do_completions cover same flag
                set. All modes + modifiers present in all three.
 
   15.11 TEST SUITE COVERAGE
-       [ ] 222. do_test_all: 12+ modes as fish subprocesses. Captures
+       [ ] 229. do_test_all: 12+ modes as fish subprocesses. Captures
                exit codes. Reports pass/fail.
-       [ ] 223. do_test_all tmpfile cleanup: rm-f on both branches.
+       [ ] 230. do_test_all tmpfile cleanup: rm-f on both branches.
 
   15.12 GLOBAL STATE CONTRACTS
-       [ ] 224. INSTALL_HAD_ERRORS: initialized false, set true in 37+
+       [ ] 231. INSTALL_HAD_ERRORS: initialized false, set true in 45
                locations. Never reset mid-pipeline. Only mutated within
                install pipeline.
 
   15.13 PATTERN CORRECTNESS
-       [ ] 225. 0 unreachable code. or-return patterns correct.
+       [ ] 232. 0 unreachable code. or-return patterns correct.
                DESTINATIONS ↔ get_file_content cases match.
                Lock PID verify-after-write present.
-       [ ] 226. string -- separator consistency throughout.
-
-
-─── Phase 13: Gap Analysis (6 checks) ────────────────────────
-
-  13.1 RACE CONDITIONS
-       [ ] 227. mktemp O_EXCL, no check-use gap, no attacker substitution
-
-  13.2 ERROR PATH COMPLETENESS
-       [ ] 228. Every tmpfile cleaned on EVERY error branch;
-               credentials erased on every error path
-       [ ] 229. Signal cleanup covers all tmpfile patterns (incl ry-argparse.*)
-
-  13.3 LOGIC
-       [ ] 230. DRY gates: every state-changing call through _run or DRY check
-
-  13.4 EDGE CASES
-       [ ] 231. do_watch: WATCH_COLS re-read each iteration, cleaned on exit
-
-  13.5 LOCK REGRESSION (v2.8.2)
-       [ ] 232. mkdir-only, 0 flock, stale reclaim with --, verify_pid present
-
+       [ ] 233. string -- separator consistency throughout.
 
 ═══════════════════════════════════════════════════════════════
- PASS 2: RUNTIME (phase 12, 18 checks)
+ PASS 2: RUNTIME (phase 12, 16 checks)
 ═══════════════════════════════════════════════════════════════
 
 STEP 1: PRE-FLIGHT + DATA COLLECTION
@@ -1063,16 +1197,30 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
   if ! command -v fish >/dev/null 2>&1; then
     echo "[CRITICAL] fish not installed — PASS 2 SKIPPED" >> "$O"; exit 0
   fi
-  FISH_VER=$(fish -c 'echo $version' 2>/dev/null | head -1)
+  FISH_VER=$(fish -c 'echo $version' 2>/dev/null | head -n 1)
   FISH_MAJOR=$(echo "$FISH_VER" | cut -d. -f1)
   FISH_MINOR=$(echo "$FISH_VER" | cut -d. -f2)
   if [ "${FISH_MAJOR:-0}" -lt 3 ] || { [ "$FISH_MAJOR" -eq 3 ] && [ "${FISH_MINOR:-0}" -lt 4 ]; }; then
     echo "[CRITICAL] fish $FISH_VER < 3.4 — PASS 2 SKIPPED" >> "$O"; exit 0
   fi
+  SYNTAX_OK=1
   if ! fish --no-execute "$S" 2>/dev/null; then
-    echo "[CRITICAL] script fails fish --no-execute — PASS 2 SKIPPED" >> "$O"; exit 0
+    echo "[HIGH] script fails fish --no-execute — execution tests may produce false failures" >> "$O"
+    SYNTAX_OK=0
   fi
-  echo "PASS 2 pre-flight: OK (fish $FISH_VER)"
+  if [ "$SYNTAX_OK" -eq 0 ]; then
+    echo "PASS 2 pre-flight: DEGRADED (fish $FISH_VER, syntax errors)"
+    echo "  Tests will attempt but results may be unreliable."
+  else
+    echo "PASS 2 pre-flight: OK (fish $FISH_VER)"
+  fi
+
+  # NON-TARGET HARDWARE: These modes return 1 on audit containers
+  # (missing hardware/configs). Do NOT flag as bugs:
+  #   --verify-runtime -> 1 (no managed files)
+  #   --diagnose -> 1 (no hardware sensors)
+  #   --install-file <path> --dry-run -> 1 (no backup dir)
+  # Flag as bugs ONLY if exit code differs from expected on target.
 
   D=/home/claude/audit-data/runtime
   mkdir -p "$D"
@@ -1089,7 +1237,7 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
   (
     for mode in \
       "--help" "-h" "--version" "-v" "--bogus" "--fix" "--stress" \
-      "--diff --lint" "--interval" "--interval abc" "--interval 0" "--interval -5"; do
+      "--diff --lint"; do
       timeout "$RUNTIME_TIMEOUT" fish "$S" $mode >/dev/null 2>&1; printf '%s → %d\n' "$mode" "$?"
     done
   ) > "$D/exit-b1.txt" &
@@ -1104,10 +1252,9 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
   (
     for mode in \
       "--logs" "--logs list" "--logs system" "--logs analyze" \
-      "--watch" "--no-log --version" "--no-log --lint" \
+      "--no-log --version" "--no-log --lint" \
       "--diff /etc/kernel/cmdline" "--diff relative/path" \
-      "--diff /etc/sysctl.d/99-ry-sysctl.conf" \
-      "--profile --dry-run"; do
+      "--diff /etc/sysctl.d/99-ry-sysctl.conf"; do
       timeout "$RUNTIME_TIMEOUT" fish "$S" $mode >/dev/null 2>&1; printf '%s → %d\n' "$mode" "$?"
     done
   ) > "$D/exit-b3.txt" &
@@ -1116,10 +1263,7 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
       "--dry-run" "-n" "--all --dry-run" "-a --dry-run" \
       "--verbose --dry-run" "-V --dry-run" "--force --dry-run" "-f --dry-run" \
       "--no-color --dry-run" \
-      "--gaming" "--diagnose --gaming" "--diagnose --gaming --dry-run" \
-      "--all --diagnose --dry-run" \
-      "--rollback --force --dry-run" \
-      "--rollback" "--rollback --all --dry-run"; do
+      "--all --diagnose --dry-run"; do
       timeout "$RUNTIME_TIMEOUT" fish "$S" $mode >/dev/null 2>&1; printf '%s → %d\n' "$mode" "$?"
     done
   ) > "$D/exit-b4.txt" &
@@ -1128,7 +1272,6 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
 
   # Group C: profile + dry-run + lint + no-log
   (
-    timeout "$RUNTIME_TIMEOUT" fish "$S" --dry-run --profile --no-color >"$D/profile-out.txt" 2>"$D/profile-err.txt"
     timeout "$RUNTIME_TIMEOUT" fish "$S" --dry-run --no-color >"$D/noprofile-out.txt" 2>"$D/noprofile-err.txt"
   ) &
   (
@@ -1145,15 +1288,11 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
   wait
 
   # Group D: watch + SIGPIPE + redirect + gaming
-  (
-    echo "" | timeout "$RUNTIME_TIMEOUT" fish "$S" --watch >"$D/watch-notty-out.txt" 2>"$D/watch-notty-err.txt"
-    printf '--watch non-tty → %d\n' "$?" > "$D/exit-d-watch.txt"
-  ) &
-  (
-    timeout "$RUNTIME_TIMEOUT" fish "$S" --lint 2>&1 | head -n 1 >/dev/null 2>&1
-    # PIPESTATUS is bash-only — do not fish-ify this block
-    printf '--lint|head -n 1 → %d\n' "${PIPESTATUS[0]}" > "$D/exit-d-sigpipe.txt"
-  ) &
+  /bin/bash -c '
+    D="$1"; S="$2"; T="$3"
+    timeout "$T" fish "$S" --lint 2>&1 | head -n 1 >/dev/null 2>&1
+    printf "--lint|head -n 1 → %d\n" "${PIPESTATUS[0]}" > "$D/exit-d-sigpipe.txt"
+  ' -- "$D" "$S" "$RUNTIME_TIMEOUT" &
   (
     fish -c '
       set result (string trim -- (cat -- /nonexistent/path 2>/dev/null))
@@ -1163,16 +1302,11 @@ STEP 1: PRE-FLIGHT + DATA COLLECTION
   (
     rg '141' "$D/help-out.txt" 2>/dev/null | head -5 > "$D/help-141.txt"
   ) &
-  (
-    timeout "$RUNTIME_TIMEOUT" fish "$S" --gaming 2>"$D/gaming-alone-err.txt" >/dev/null
-    printf '--gaming alone → %d\n' "$?" > "$D/exit-d-gaming.txt"
-    rg -i 'warn|ignor' "$D/gaming-alone-err.txt" 2>/dev/null | head -10 > "$D/gaming-warn.txt"
-  ) &
   wait
-  cat "$D"/exit-d-{watch,sigpipe,gaming}.txt >> "$D/exit-codes.txt" 2>/dev/null
+  cat "$D"/exit-d-sigpipe.txt >> "$D/exit-codes.txt" 2>/dev/null
 
   # Group E: NO_COLOR enforcement
-  for mode in "--lint" "--diff" "--dry-run" "--diagnose" "--logs list" "--diagnose --gaming"; do
+  for mode in "--lint" "--diff" "--dry-run" "--diagnose" "--logs list"; do
     safename=$(echo "$mode" | tr ' ' '-')
     NO_COLOR=1 timeout "$RUNTIME_TIMEOUT" fish "$S" $mode --no-color 2>"$D/nocolor-$safename.txt" >/dev/null &
   done
@@ -1185,58 +1319,48 @@ STEP 2: ANALYSIS
   D=/home/claude/audit-data/runtime
   echo "=== STDERR BYTES (expect 0) ===" && wc -c "$D"/{help,h,ver,v}-err.txt
   echo "=== EXIT CODES ===" && bat --plain "$D/exit-codes.txt" 2>/dev/null || cat "$D/exit-codes.txt"
-  echo "=== ANSI (expect 0) ===" && rg -cP '\x1b\[' "$D"/nocolor-*.txt 2>/dev/null || echo "none"
+  echo "=== ANSI (expect 0) ===" && { rg -cP '\x1b\[' "$D"/nocolor-*.txt 2>/dev/null || grep -cP '\x1b\[' "$D"/nocolor-*.txt 2>/dev/null || echo "none"; }
   echo "=== DRY-RUN FS (expect empty) ===" && bat --plain "$D/dry-diff.txt" 2>/dev/null || cat "$D/dry-diff.txt"
   echo "=== LINT ===" && bat --plain "$D/lint-err.txt" 2>/dev/null || cat "$D/lint-err.txt"
   echo "=== NO-LOG (expect empty) ===" && bat --plain "$D/nolog-check.txt" 2>/dev/null || cat "$D/nolog-check.txt"
-  echo "=== WATCH NON-TTY ===" && bat --plain "$D/watch-notty-err.txt" 2>/dev/null || cat "$D/watch-notty-err.txt"
   echo "=== REDIRECT ===" && bat --plain "$D/redirect-err.txt" 2>/dev/null || cat "$D/redirect-err.txt"
-  echo "=== PROFILE ===" && rg -c '\[PROFILE\]' "$D/profile-err.txt" 2>/dev/null || echo "0"
-  echo "=== NO PROFILE (expect 0) ===" && rg -c '\[PROFILE\]' "$D/noprofile-err.txt" 2>/dev/null || echo "0"
   echo "=== HELP 141 (expect hit) ===" && bat --plain "$D/help-141.txt" 2>/dev/null || cat "$D/help-141.txt"
-  echo "=== GAMING WARN ===" && bat --plain "$D/gaming-warn.txt" 2>/dev/null || cat "$D/gaming-warn.txt"
   ```
 
 STEP 3: CHECKLIST
 
   12.1 STDOUT/STDERR SEPARATION
-       [ ] 233. --help: stdout content, 0 stderr
-       [ ] 234. --version: stdout version, 0 stderr
-       [ ] 235. Op modes: all to stderr, 0 stdout
-       [ ] 236. Errors: stderr only, 0 stdout
+       [ ] 239. --help: stdout content, 0 stderr
+       [ ] 240. --version: stdout version, 0 stderr
+       [ ] 241. Op modes: all to stderr, 0 stdout
+       [ ] 242. Errors: stderr only, 0 stdout
 
   12.2 EXIT CODE MATRIX
-       [ ] 237. 0: --help, -h, --version, -v, --lint, --completions,
+       [ ] 243. 0: --help, -h, --version, -v, --lint, --completions,
                --test-all, --logs list/system, --dry-run, -n,
-               --profile --dry-run, -a --dry-run, --diagnose --gaming
-               --dry-run, --all --diagnose --dry-run
-       [ ] 238. 2: invalid flag, conflicts, modifier-only, bad --interval,
+               -a --dry-run, --all --diagnose --dry-run
+       [ ] 244. 2: invalid flag, conflicts, modifier-only,
                --install-file no path, --diff relative/path
-       [ ] 239. 1: runtime failures. Modifier WARN (not exit 2):
-               --interval without parent, --gaming without --diagnose
+       [ ] 245. 1: runtime failures
 
   12.3 OPTION VALIDATION
-       [ ] 240. Every flag accepted; modifier guards enforced
-       [ ] 241. Multiple modes → exit 2; -- stops parsing
-       [ ] 242. --interval: missing/non-numeric/0/negative → exit 2
-       [ ] 243. --install-file no path → exit 2 (pre-lock);
+       [ ] 246. Every flag accepted; modifier guards enforced
+       [ ] 247. Multiple modes → exit 2; -- stops parsing
+       [ ] 248. --install-file no path → exit 2 (pre-lock);
                --diff: non-absolute → 2, non-managed → 1
   12.4 NO_COLOR
-       [ ] 244. 0 ANSI escapes across ALL modes with --no-color
+       [ ] 249. 0 ANSI escapes across ALL modes with --no-color
 
   12.5 DRY-RUN
-       [ ] 245. [DRY] messages, 0 filesystem changes
+       [ ] 250. [DRY] messages, 0 filesystem changes
 
   12.6 INTERNAL CONSISTENCY
-       [ ] 246. --lint passes; --test-all reports correctly
-       [ ] 247. --logs no sub-target → exit 2; --logs analyze missing → 1
+       [ ] 251. --lint passes; --test-all reports correctly
+       [ ] 252. --logs no sub-target → exit 2; --logs analyze missing → 1
   12.7 MODE-SPECIFIC
-       [ ] 248. --watch non-tty → exit 1; --no-log: no .jsonl
-       [ ] 249. --diff <path>: shows single file diff; --no-log --version: 0
+       [ ] 253. --no-log: no .jsonl created
+       [ ] 254. --diff <path>: shows single file diff; --no-log --version: 0
 
-  12.8 PROFILE + WATCH GUARD
-       [ ] 250. --profile: [PROFILE] on stderr, NO_COLOR respected, absent
-               when unset. do_watch: color gated by isatty 1.
 
 ═══════════════════════════════════════════════════════════════
  PASS 3: FINALIZE
@@ -1249,10 +1373,10 @@ STEP 1: COLLATE
   test -s "$O" || echo "WARNING: No findings" > "$O"
   fish -c '
     for sev in CRITICAL HIGH MED LOW INFO BUG STYLE
-      set -l c (rg -c "^F-.*\[$sev\]" "'"$O"'" 2>/dev/null; or echo 0)
+      set -l c (rg -c "^F-.*\[$sev\]" $argv[1] 2>/dev/null; or echo 0)
       echo "$sev: $c"
     end
-  '
+  ' -- "$O"
   echo "TOTAL: $(rg -c '^F-' "$O" 2>/dev/null || echo 0)"
   ```
 
@@ -1260,30 +1384,30 @@ STEP 2: SUMMARY TABLE
 
   Phase  | Checks | Pass | Fail | Info
   -------|--------|------|------|-----
-  1      | 12     |      |      |
-  2      | 11     |      |      |
-  3      | 15     |      |      |
-  4      | 12     |      |      |
-  5      | 20     |      |      |
-  6      | 30     |      |      |
-  7      | 14     |      |      |
-  8      | 22     |      |      |
-  9      | 9      |      |      |
-  10     | 11     |      |      |
-  11     | 14     |      |      |
-  14     | 37     |      |      |
-  15     | 19     |      |      |
-  13     | 6      |      |      |
-  12     | 18     |      |      |
-  TOTAL  | 250    |      |      |
+    1      | 12     |      |      |
+    2      | 11     |      |      |
+    3      | 15     |      |      |
+    4      | 12     |      |      |
+    5      | 20     |      |      |
+    6      | 30     |      |      |
+    7      | 14     |      |      |
+    8      | 22     |      |      |
+    9      | 9      |      |      |
+   10     | 11     |      |      |
+   11     | 14     |      |      |
+   13     | 5      |      |      |
+   14     | 44     |      |      |
+   15     | 19     |      |      |
+   12     | 16     |      |      |
+  TOTAL  | 254    |      |      |
 
   CRITICAL: N | HIGH: N | MED: N | LOW: N | INFO: N
 
   SPECIAL HANDLING:
     Always PASS       137 (false-positive documentation)
-    Runtime only      143 (redirect regression), PASS 2 checks
-    Expect 0 hits     83, 129, 171, 176, 177, 193, 232 (regressions)
-    WARN not exit 2   239 (modifier-only flags)
+    Runtime only      143 (redirect regression), PASS 2 checks (16)
+    Expect 0 hits     83, 129, 171, 176, 177, 193, 212, 240 (regressions)
+    WARN not exit 2   247 (modifier-only flags)
 
   Verdict: deploy-ready | fix-required | redesign-needed
 
@@ -1326,9 +1450,21 @@ STEP 3: SPEC FILE
   disambiguate. Spec self-contained. Version bump if any actionable
   fixes. INFO listed separately.
 
-  UNIQUENESS VERIFICATION (run after spec is written):
+  UNIQUENESS VERIFICATION (run DURING and AFTER spec generation):
+  Before adding each Before/After pair, verify uniqueness first:
   ```bash
-
+  verify_unique() {
+    local pat="$1"
+    local c=$(rg -cF -- "$pat" /home/claude/audit-src/script.fish 2>/dev/null || echo 0)
+    if [ "$c" != "1" ]; then
+      echo "NON-UNIQUE ($c hits): $pat -- expand context"
+      return 1
+    fi
+  }
+  ```
+  If non-unique (0 or 2+ hits), expand Before/After with surrounding
+  lines until unique. Post-write full check:
+  ```bash
   rg -o 'Before: .*' fixes-spec-*.txt | while IFS= read -r line; do
     pat="${line#*Before: }"
     c=$(rg -cF -- "$pat" /home/claude/audit-src/script.fish 2>/dev/null || echo 0)
