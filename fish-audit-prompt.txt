@@ -1,11 +1,30 @@
 FISH SHELL SCRIPT AUDIT PROMPT
 ===============================
-Version: 26.5.0
-Derived from: ry-install.fish v3.3.5 audit (2026-03-03)
+Version: 26.6.0
+Derived from: ry-install.fish v3.3.7 audit (2026-03-04)
 Checks: 254
-Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.3.5)
-Changes from v26.4.0: 6 updates from v3.3.5 scope shadow fixes.
-  F1: Checks 204, 213 — set -l 682 → 653, bare set 287 → 315 (28 scope
+Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.3.7)
+Changes from v26.5.1: 8 updates from v3.3.7 scope shadow fixes.
+  F1: Check 211 — 15 new block→nested-block scope shadows found and
+      fixed in v3.3.7 (6 functions, 12 unique vars). Total scope fixes
+      171 → 186, functions 43 → 49. Removed false "0 remaining" claim.
+      Added note about --lint awk detection gap.
+  F2: Check 212 — added 12 vars to cross-block list: install_file
+      (_cur_content), do_diff (actual_perms, actual_owner, target_owner),
+      do_diagnose (nvme_found, disksize), _install_collect_wifi
+      (wlan_iface, wifi_pass), _install_finalize (reload_wait, wifi_retry).
+  F3: Checks 204, 213 — set -l 646 → 638, in-function set -g 97 → 103,
+      grand total scope fixes 171 → 186.
+  F4: Derived-from bumped to v3.3.7.
+  F5: Phase 14 scope extended to v3.1.0–v3.3.7.
+  F6: GROUP D data collection: added Python scope-stack shadow detector
+      that catches block→nested-block shadows (the pattern the script's
+      --lint awk checker misses). Replaces simple rg -c count.
+  F7: KEY LESSONS 207-214 entry updated to note --lint detection gap.
+  F8: Check 211 scope fix breakdown updated with v3.3.7 round.
+
+Changes from v26.4.0: 7 updates from v3.3.5 scope shadow fixes.
+  F1: Checks 204, 213 — set -l 674 → 646, bare set 302 → 330 (28 scope
       shadows fixed: issues, _log_lines, has_diff, run_stress, to_del).
   F2: Checks 211, 213 — scope fix total 143 → 171 (+28), functions 41 → 43
       (+do_logs, +_install_configure_services).
@@ -16,6 +35,10 @@ Changes from v26.4.0: 6 updates from v3.3.5 scope shadow fixes.
   F6: --lint scope shadow awk rewritten (mawk-compatible, piped while
       tracking, anchored ^set -l). No check number change — awk is
       implementation detail of existing lint infrastructure.
+  F7: Checks 204, 213 — count methodology corrected: set -l uses anchored
+      grep (excludes 7 comment/awk false positives), bare set base
+      corrected from 287 → 302 (pre-existing undercount), grand total
+      scope fixes corrected from 211 → 171 (124+19+28).
 
 Changes from v26.3.0: 7 updates from v3.3.4 audit fixes.
   F1: Check 69 — passphrase now rejects '%' (GKeyFile parse safety),
@@ -103,7 +126,9 @@ KEY LESSONS (sorted by check number):
       198  --argument-names self-documents function signatures
       200  _log START/END markers enable per-mode log analysis
       202  Post-write sha256 catches silent write corruption
- 207–214   set -l inside blocks creates scope shadows; bare set for cross-block
+ 207–214   set -l inside blocks creates scope shadows; bare set for
+           cross-block. Script --lint awk only catches depth-0 → block;
+           use scope-stack detector for block → nested-block (GROUP D).
       208  Dispatch variables (MODE, exit_code) need bare set, not set -g on local
       215  fish_indent validates canonical formatting beyond syntax
       218  PROGRESS_STEPS must match _progress calls exactly
@@ -433,7 +458,7 @@ STEP 1: DATA COLLECTION
     echo "=== UNQUOTED TEST ===" && rg -n 'test \$[a-z]' "$F" | rg -v '"' | head -20
   ) > "$D/p8-11.txt" 2>&1; echo "GROUP_C_EXIT=$?" >> "$D/p8-11.txt" &
 
-  # ── GROUP D: P14 v3.1.0–v3.3.5 specifics ──
+  # ── GROUP D: P14 v3.1.0–v3.3.7 specifics ──
   (
     echo "=== KVER GLOBALS ===" && rg -n 'KVER|KVER_MAJOR|KVER_MINOR' "$F" | head -20
     echo "=== _ntsync_state ===" && rg -n '_ntsync_state' "$F" | head -10
@@ -519,7 +544,46 @@ STEP 1: DATA COLLECTION
     echo "=== EXIT_CODE DISPATCH ===" && rg -n 'set.*exit_code ' "$F" | rg -v '#|set -l exit_code' | head -20
     echo "=== HAS_LOCK DISPATCH ===" && rg -n 'set.*_has_lock ' "$F" | head -10
     echo "=== MODE_LABEL DISPATCH ===" && rg -n 'set.*mode_label ' "$F" | head -10
-    echo "=== SCOPE SHADOW CANDIDATES ===" && rg -c '^\s+set -l ' "$F"
+    echo "=== SCOPE SHADOW DETECTOR ===" && python3 -c "
+import re, sys
+lines = open(sys.argv[1]).readlines()
+func = None; depth = 0; scope_stack = []; in_string = False; issues = []
+for i, line in enumerate(lines, 1):
+    s = line.strip()
+    if in_string:
+        if re.search(r\"(?<!\\\\\\\\)'$\", s): in_string = False
+        continue
+    if re.search(r\"printf '%s\\\\\\\\n' '\", s):
+        after = s.split(\"printf '%s\\\\\\\\n' '\", 1)[1] if \"printf '%s\\\\\\\\n' '\" in s else ''
+        if not re.search(r\"(?<!\\\\\\\\)'$\", after): in_string = True; continue
+        continue
+    if s.startswith('#'): continue
+    if re.match(r'^function [a-z_]', line) and not line.startswith(' '):
+        if depth == 0: func = re.match(r'^function (\w+)', s).group(1); depth = 1; scope_stack = [{}]
+        else: depth += 1; scope_stack.append({})
+        continue
+    if not func: continue
+    opened = False
+    for kw in ['if ','for ','while ','switch ','begin']:
+        if s.startswith(kw): depth += 1; scope_stack.append({}); opened = True; break
+    if s == 'end':
+        if depth > 1:
+            if scope_stack: scope_stack.pop()
+            depth -= 1
+        elif depth == 1: scope_stack = []; func = None; depth = 0
+        continue
+    if opened: continue
+    m = re.match(r'\s+set -l ([a-zA-Z_]\w*)', line)
+    if m:
+        var = m.group(1); cur = len(scope_stack)-1
+        for si in range(cur):
+            if var in scope_stack[si]:
+                issues.append(f'L{i}: {func}() shadows L{scope_stack[si][var]} var \"{var}\"')
+                break
+        if 0 <= cur < len(scope_stack) and var not in scope_stack[cur]: scope_stack[cur][var] = i
+for x in issues: print(x)
+print(f'Total: {len(issues)} scope shadow(s)')
+" "$F" 2>&1 | head -30
   ) > "$D/p14.txt" 2>&1; echo "GROUP_D_EXIT=$?" >> "$D/p14.txt" &
 
   # ── GROUP E: P13 gap analysis (race/error/edge tracing) ──
@@ -587,7 +651,7 @@ STEP 1: DATA COLLECTION
   # ── Post-wait data guard (D and E collect independently; E's ──
   # ── P13 analysis reads p14.txt for 11 shared patterns)       ──
   if [ ! -s "$D/p14.txt" ]; then
-    echo "[INFO] p14.txt empty or missing — P14 v3.1.0-v3.3.5 checks will be incomplete" >> "$O"
+    echo "[INFO] p14.txt empty or missing — P14 v3.1.0-v3.3.7 checks will be incomplete" >> "$O"
   fi
   if [ ! -s "$D/p13.txt" ]; then
     echo "[INFO] p13.txt empty or missing — P13 gap analysis checks will be incomplete" >> "$O"
@@ -604,7 +668,7 @@ STEP 1: DATA COLLECTION
         p6-7)  phases="P6-P7 (configs,cross-refs)" ;;
         p8-11) phases="P8-P11 (architecture,patterns,docs,testing)" ;;
         p13)   phases="P13 (gap analysis)" ;;
-        p14)   phases="P14 (v3.1.0-v3.3.5 specifics)" ;;
+        p14)   phases="P14 (v3.1.0-v3.3.7 specifics)" ;;
         *)     phases="unknown ($fname)" ;;
       esac
       echo "WARNING: $f has $lines lines, truncating to 300" >&2
@@ -1010,7 +1074,7 @@ STEP 2: ANALYZE ON DISK
        [ ] 238. mkdir-only, 0 flock, stale reclaim with --, verify_pid present
 
 
-─── Phase 14: v3.1.0–v3.3.5 Specifics (44 checks) ──────────
+─── Phase 14: v3.1.0–v3.3.7 Specifics (44 checks) ──────────
 
   14.1 KVER GLOBALS (v3.1.0)
        [ ] 171. KVER, KVER_MAJOR, KVER_MINOR initialized at top level
@@ -1086,7 +1150,7 @@ STEP 2: ANALYZE ON DISK
        [ ] 198. --argument-names on 19 functions.
 
   14.11 SCOPING + ROLLBACK (v3.2.9–v3.2.10)
-       [ ] 199. In-function set -g: 97 (all intentional VERIFY_*/flag globals).
+       [ ] 199. In-function set -g: 103 (all intentional VERIFY_*/flag globals).
 
   14.12 LOGGING + VERIFICATION (v3.2.8–v3.2.10)
        [ ] 200. _log START/END markers on 8 modes. rg START → 8, END → 9.
@@ -1097,8 +1161,8 @@ STEP 2: ANALYZE ON DISK
                after atomic mv. Failure → INSTALL_HAD_ERRORS.
        [ ] 203. WiFi credentials: set before use, erased after iwd config.
                Not stored as globals beyond pipeline.
-       [ ] 204. Unconditional log rotation for all modes. 653 vars have
-               explicit set -l. 315 bare set for cross-block vars.
+       [ ] 204. Unconditional log rotation for all modes. 638 vars have
+               explicit set -l. 330 bare set for cross-block vars.
                _run wraps 10 sudo write ops for logging.
 
   14.13 STDOUT + SECURITY (v3.2.10)
@@ -1122,22 +1186,27 @@ STEP 2: ANALYZE ON DISK
        [ ] 210. mode_label variable: bare set. Log filenames include
                modifier suffixes (-dry, -fix, -all, sub-target).
 
-  14.15 SCOPE REMEDIATION (v3.3.0–v3.3.2)
-       [ ] 211. 171 set -l → bare set across 43 functions (124 in v3.3.0 +
-               19 in v3.3.2 + 28 in v3.3.5). 0 remaining scope shadows.
-               Pattern: set -l inside for/while/if/else creates block-scoped
-               shadow invisible to outer scope.
+  14.15 SCOPE REMEDIATION (v3.3.0–v3.3.7)
+       [ ] 211. 186 set -l → bare set across 49 functions (124 in v3.3.0 +
+               19 in v3.3.2 + 28 in v3.3.5 + 15 in v3.3.7).
+               Note: script's --lint awk checker only detects function-scope
+               (depth 0) → block shadows; block → nested-block shadows
+               require a scope-stack detector (see GROUP D collection).
        [ ] 212. Cross-block vars use bare set: do_diff (has_diff, has_pacnew,
-               this_diff), do_diagnose (issues, run_stress, 15 counters),
-               do_logs (_log_lines), do_lint (has_errors),
+               this_diff, actual_perms, actual_owner, target_owner),
+               do_diagnose (issues, run_stress, 15 counters, nvme_found,
+               disksize), do_logs (_log_lines), do_lint (has_errors),
                verify_runtime (perms), validate_configs (errors),
                _analyze_log (10 vars), _check_hardware_fingerprint (8 vars),
                _progress (bar/desc), _preflight_boot_sanity (errors),
                _install_configure_services (to_del),
-               do_test_all (total/passed).
-       [ ] 213. In-function set -g count: 97 (all intentional VERIFY_*/flag
-               globals). Bare set count: 315 (cross-block updaters).
-               set -l count: 653. Grand total scope fixes: 211.
+               do_test_all (total/passed),
+               install_file (_cur_content),
+               _install_collect_wifi (wlan_iface, wifi_pass),
+               _install_finalize (reload_wait, wifi_retry).
+       [ ] 213. In-function set -g count: 103 (all intentional VERIFY_*/flag
+               globals). Bare set count: 330 (cross-block updaters).
+               set -l count: 638. Grand total scope fixes: 186.
        [ ] 214. _analyze_log total_step_s: bare set (not set -g on local).
                Step timing total correctly computed. (F-14, v3.3.1)
 
