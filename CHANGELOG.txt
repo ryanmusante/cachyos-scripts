@@ -1,0 +1,87 @@
+FISH AUDIT PROMPT — CHANGELOG
+==============================
+
+Changes from v26.5.1: 8 updates from v3.3.7 scope shadow fixes.
+  F1: Check 211 — 15 new block→nested-block scope shadows found and
+      fixed in v3.3.7 (6 functions, 12 unique vars). Total scope fixes
+      171 → 186, functions 43 → 49. Removed false "0 remaining" claim.
+      Added note about --lint awk detection gap.
+  F2: Check 212 — added 12 vars to cross-block list: install_file
+      (_cur_content), do_diff (actual_perms, actual_owner, target_owner),
+      do_diagnose (nvme_found, disksize), _install_collect_wifi
+      (wlan_iface, wifi_pass), _install_finalize (reload_wait, wifi_retry).
+  F3: Checks 204, 213 — set -l 646 → 638, in-function set -g 97 → 103,
+      grand total scope fixes 171 → 186.
+  F4: Derived-from bumped to v3.3.7.
+  F5: Phase 14 scope extended to v3.1.0–v3.3.7.
+  F6: GROUP D data collection: added Python scope-stack shadow detector
+      that catches block→nested-block shadows (the pattern the script's
+      --lint awk checker misses). Replaces simple rg -c count.
+  F7: KEY LESSONS 207-214 entry updated to note --lint detection gap.
+  F8: Check 211 scope fix breakdown updated with v3.3.7 round.
+
+Changes from v26.4.0: 7 updates from v3.3.5 scope shadow fixes.
+  F1: Checks 204, 213 — set -l 674 → 646, bare set 302 → 330 (28 scope
+      shadows fixed: issues, _log_lines, has_diff, run_stress, to_del).
+  F2: Checks 211, 213 — scope fix total 143 → 171 (+28), functions 41 → 43
+      (+do_logs, +_install_configure_services).
+  F3: Check 212 — cross-block var list updated (added do_logs/_log_lines,
+      do_diagnose/issues+run_stress, _install_configure_services/to_del).
+  F4: Derived-from bumped to v3.3.5.
+  F5: Phase 14 scope extended to v3.1.0–v3.3.5 (6 locations).
+  F6: --lint scope shadow awk rewritten (mawk-compatible, piped while
+      tracking, anchored ^set -l). No check number change — awk is
+      implementation detail of existing lint infrastructure.
+  F7: Checks 204, 213 — count methodology corrected: set -l uses anchored
+      grep (excludes 7 comment/awk false positives), bare set base
+      corrected from 287 → 302 (pre-existing undercount), grand total
+      scope fixes corrected from 211 → 171 (124+19+28).
+
+Changes from v26.3.0: 7 updates from v3.3.4 audit fixes.
+  F1: Check 69 — passphrase now rejects '%' (GKeyFile parse safety),
+  matching existing SSID restriction.
+  F2: Check 195 — section header count 19 → 18 (multiline comment
+  collapse in v3.3.3 cleanup merged one header).
+  F3: Checks 199, 213 — in-function set -g count 96 → 97
+  (new WIFI_SSID="" in passphrase % rejection path).
+  F4: Checks 204, 213 — set -l count 671 → 682 (scope shadow
+  lint check added 11 locals in do_lint).
+  F5: Check 206 — SECURITY INVARIANT updated: documents that
+  WIFI_SSID reaches $argv via nmcli, mitigated by validation.
+  F6: Derived-from version bumped to v3.3.4.
+  F7: Phase 14 scope extended to v3.1.0–v3.3.5.
+Changes from v26.2.0: 3 correctness fixes from v26.2 audit of v3.3.2.
+  F1: UDEV data collection regex — escape brace in ATTR{ to ATTR[{]
+  so rg doesn't reject the alternation as an invalid quantifier.
+  F2: Block comment count in check 201 — updated from 6 to 7 to match
+  current script structure (MANAGED FILE DESTINATIONS section added in
+  v3.3.x was not reflected in checklist).
+  F3: Derived-from version bumped to v3.3.3 (v3.3.2 findings fixed).
+Changes from v26.1.0: 8 robustness/correctness fixes.
+  F1: PIPESTATUS subshell uses explicit /bin/bash -c (not implicit
+  subshell inheritance) to guarantee bash-only builtins.
+  F2: Reconcile adaptive context budget arithmetic (freed 400 lines
+  explicitly shift to overhead reserve, 1800 total).
+  F3: Clarify D/E post-wait guard: collection-independent but
+  P13 analysis reads p14.txt for 11 shared patterns.
+  F4: Add PASS 2 runtime checklist count verification (16 checks)
+  alongside static 238-check verify. Total: 238+16=254.
+  F5: Replace fragile "'"$F"'" quoting in all fish -c blocks with
+  $argv[1] + -- "$F" argument passing (16 instances). Prevents
+  breakage on paths containing single quotes.
+  F6: Add check number navigation note between P11 and P13
+  documenting non-sequential numbering across phases.
+  F7: Add EMPTY SECTION GUARD after SIZE GATE to detect silent rg
+  failures producing zero-data sections in collection output.
+  F8: head -1 → head -n 1 in PASS 2 pre-flight (self-consistency
+  with check 141 anti-pattern rule).
+Changes from v26.0.0: reorder checklist phases to 1-11, 13, 14, 15
+  (was 1-11, 14, 15, 13). Clarify v25 check numbers in changelog.
+  Add PCRE2/multiline fallbacks for rg -Un and rg -cP patterns.
+  Add data-file→phase mapping in STEP 2 ANALYZE. SIZE GATE now
+  identifies affected phases. Context budget overflow guideline.
+  Strengthen PIPESTATUS bash-only warning. Fix summary table order.
+Changes from v25: remove --watch, --rollback, --gaming,
+  --profile, --interval (v3.3.2 feature removal). Update all
+  check references, data collection, runtime tests, counts.
+  4 v25 checks removed (v25 #200, #239, #250, #258). Renumbered 254 total.
