@@ -1,9 +1,22 @@
 FISH SHELL SCRIPT AUDIT PROMPT
 ===============================
-Version: 26.4.0
-Derived from: ry-install.fish v3.3.4 audit (2026-03-03)
+Version: 26.5.0
+Derived from: ry-install.fish v3.3.5 audit (2026-03-03)
 Checks: 254
-Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.3.4)
+Phases: 15 (12 static + 1 runtime + 1 gap analysis + 1 v3.1.0–v3.3.5)
+Changes from v26.4.0: 6 updates from v3.3.5 scope shadow fixes.
+  F1: Checks 204, 213 — set -l 682 → 653, bare set 287 → 315 (28 scope
+      shadows fixed: issues, _log_lines, has_diff, run_stress, to_del).
+  F2: Checks 211, 213 — scope fix total 143 → 171 (+28), functions 41 → 43
+      (+do_logs, +_install_configure_services).
+  F3: Check 212 — cross-block var list updated (added do_logs/_log_lines,
+      do_diagnose/issues+run_stress, _install_configure_services/to_del).
+  F4: Derived-from bumped to v3.3.5.
+  F5: Phase 14 scope extended to v3.1.0–v3.3.5 (6 locations).
+  F6: --lint scope shadow awk rewritten (mawk-compatible, piped while
+      tracking, anchored ^set -l). No check number change — awk is
+      implementation detail of existing lint infrastructure.
+
 Changes from v26.3.0: 7 updates from v3.3.4 audit fixes.
   F1: Check 69 — passphrase now rejects '%' (GKeyFile parse safety),
   matching existing SSID restriction.
@@ -16,7 +29,7 @@ Changes from v26.3.0: 7 updates from v3.3.4 audit fixes.
   F5: Check 206 — SECURITY INVARIANT updated: documents that
   WIFI_SSID reaches $argv via nmcli, mitigated by validation.
   F6: Derived-from version bumped to v3.3.4.
-  F7: Phase 14 scope extended to v3.1.0–v3.3.4.
+  F7: Phase 14 scope extended to v3.1.0–v3.3.5.
 Changes from v26.2.0: 3 correctness fixes from v26.2 audit of v3.3.2.
   F1: UDEV data collection regex — escape brace in ATTR{ to ATTR[{]
   so rg doesn't reject the alternation as an invalid quantifier.
@@ -420,7 +433,7 @@ STEP 1: DATA COLLECTION
     echo "=== UNQUOTED TEST ===" && rg -n 'test \$[a-z]' "$F" | rg -v '"' | head -20
   ) > "$D/p8-11.txt" 2>&1; echo "GROUP_C_EXIT=$?" >> "$D/p8-11.txt" &
 
-  # ── GROUP D: P14 v3.1.0–v3.3.4 specifics ──
+  # ── GROUP D: P14 v3.1.0–v3.3.5 specifics ──
   (
     echo "=== KVER GLOBALS ===" && rg -n 'KVER|KVER_MAJOR|KVER_MINOR' "$F" | head -20
     echo "=== _ntsync_state ===" && rg -n '_ntsync_state' "$F" | head -10
@@ -574,7 +587,7 @@ STEP 1: DATA COLLECTION
   # ── Post-wait data guard (D and E collect independently; E's ──
   # ── P13 analysis reads p14.txt for 11 shared patterns)       ──
   if [ ! -s "$D/p14.txt" ]; then
-    echo "[INFO] p14.txt empty or missing — P14 v3.1.0-v3.3.4 checks will be incomplete" >> "$O"
+    echo "[INFO] p14.txt empty or missing — P14 v3.1.0-v3.3.5 checks will be incomplete" >> "$O"
   fi
   if [ ! -s "$D/p13.txt" ]; then
     echo "[INFO] p13.txt empty or missing — P13 gap analysis checks will be incomplete" >> "$O"
@@ -591,7 +604,7 @@ STEP 1: DATA COLLECTION
         p6-7)  phases="P6-P7 (configs,cross-refs)" ;;
         p8-11) phases="P8-P11 (architecture,patterns,docs,testing)" ;;
         p13)   phases="P13 (gap analysis)" ;;
-        p14)   phases="P14 (v3.1.0-v3.3.4 specifics)" ;;
+        p14)   phases="P14 (v3.1.0-v3.3.5 specifics)" ;;
         *)     phases="unknown ($fname)" ;;
       esac
       echo "WARNING: $f has $lines lines, truncating to 300" >&2
@@ -997,7 +1010,7 @@ STEP 2: ANALYZE ON DISK
        [ ] 238. mkdir-only, 0 flock, stale reclaim with --, verify_pid present
 
 
-─── Phase 14: v3.1.0–v3.3.4 Specifics (44 checks) ──────────
+─── Phase 14: v3.1.0–v3.3.5 Specifics (44 checks) ──────────
 
   14.1 KVER GLOBALS (v3.1.0)
        [ ] 171. KVER, KVER_MAJOR, KVER_MINOR initialized at top level
@@ -1084,8 +1097,8 @@ STEP 2: ANALYZE ON DISK
                after atomic mv. Failure → INSTALL_HAD_ERRORS.
        [ ] 203. WiFi credentials: set before use, erased after iwd config.
                Not stored as globals beyond pipeline.
-       [ ] 204. Unconditional log rotation for all modes. 682 vars have
-               explicit set -l. 287 bare set for cross-block vars.
+       [ ] 204. Unconditional log rotation for all modes. 653 vars have
+               explicit set -l. 315 bare set for cross-block vars.
                _run wraps 10 sudo write ops for logging.
 
   14.13 STDOUT + SECURITY (v3.2.10)
@@ -1110,19 +1123,21 @@ STEP 2: ANALYZE ON DISK
                modifier suffixes (-dry, -fix, -all, sub-target).
 
   14.15 SCOPE REMEDIATION (v3.3.0–v3.3.2)
-       [ ] 211. 143 set -l → bare set across 41 functions (124 in v3.3.0 +
-               19 in v3.3.2). 0 read-after-block scope shadows. Pattern:
-               set -l inside for/while/if/else creates block-scoped
+       [ ] 211. 171 set -l → bare set across 43 functions (124 in v3.3.0 +
+               19 in v3.3.2 + 28 in v3.3.5). 0 remaining scope shadows.
+               Pattern: set -l inside for/while/if/else creates block-scoped
                shadow invisible to outer scope.
        [ ] 212. Cross-block vars use bare set: do_diff (has_diff, has_pacnew,
-               this_diff), do_diagnose (17 counters), do_lint (has_errors),
+               this_diff), do_diagnose (issues, run_stress, 15 counters),
+               do_logs (_log_lines), do_lint (has_errors),
                verify_runtime (perms), validate_configs (errors),
                _analyze_log (10 vars), _check_hardware_fingerprint (8 vars),
                _progress (bar/desc), _preflight_boot_sanity (errors),
+               _install_configure_services (to_del),
                do_test_all (total/passed).
        [ ] 213. In-function set -g count: 97 (all intentional VERIFY_*/flag
-               globals). Bare set count: 287 (cross-block updaters).
-               set -l count: 682. Grand total scope fixes: 183.
+               globals). Bare set count: 315 (cross-block updaters).
+               set -l count: 653. Grand total scope fixes: 211.
        [ ] 214. _analyze_log total_step_s: bare set (not set -g on local).
                Step timing total correctly computed. (F-14, v3.3.1)
 
